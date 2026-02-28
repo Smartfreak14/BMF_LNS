@@ -1,169 +1,79 @@
-# RBAC Maintenance C++
+# BMF_LNS
 
-Implementation C++ des algorithmes de maintenance RBAC avec préservation des propriétés de sécurité, utilisant le solveur MaxSAT **EvalMaxSAT**.
+**Boolean Matrix Factorisation with GI, LS, WLS, LNS**
 
-## 📋 Description
+## Repository
 
-Ce projet implémente en C++ les algorithmes de maintenance RBAC (Role-Based Access Control) avec deux propriétés de sécurité:
+```
+git clone https://github.com/Smartfreak14/BMF_LNS.git
+cd BMF_LNS
+```
 
-### NoLk (Confidentialité)
-- **Objectif**: Empêcher les fuites d'information entre deux sujets
-- **Contrainte**: `¬(F^w[i1,j] ∧ F^r[i2,j])` pour tout objet j
-- **Signification**: Le sujet i1 ne peut pas écrire sur un objet que le sujet i2 peut lire
+## Description
 
-### NoCorrupt (Intégrité)
-- **Objectif**: Empêcher la corruption d'information d'un objet vers un autre
-- **Contrainte**: `¬(F^r[i,j1] ∧ F^w[i,j2])` pour tout sujet i
-- **Signification**: Si un sujet lit j1, il ne peut pas (même indirectement) écrire sur j2
+A C++ solver for Boolean Matrix Factorization (BMF) using MaxSAT-based local search methods:
+- **GI** (Greedy Initialize) -- greedy construction of initial factorization A, B
+- **LS** (Local Search) -- 1-flip hill climbing on A and B
+- **WLS** (Weighted Local Search) -- weighted variant with dynamic penalty
+- **LNS** (Large Neighborhood Search) -- destroy-and-repair via partial MaxSAT
 
-## 🔧 Opérations Supportées
+Given a binary matrix M, finds A (m x k) and B (k x n) such that the Boolean product A . B approximates M with minimal reconstruction errors.
 
-| Opération | NoLk | NoCorrupt |
-|-----------|------|-----------|
-| Vérification | ✅ | ✅ (SAT + Graph) |
-| Add-Subject | ✅ | ✅ |
-| Add-Object | ✅ | ✅ |
-| Modify-Rule | ❌ | ✅ |
-
-## 🚀 Installation
-
-### Prérequis
-- CMake >= 3.16
-- Compilateur C++ avec support C++17
-- Git (pour cloner EvalMaxSAT)
-
-### Compilation
+## Build
 
 ```bash
-cd /Users/fotsofranck/Projets/BMF/rbac_maintenance/cpp
-
-# Rendre le script exécutable
-chmod +x build.sh
-
-# Compiler (installe automatiquement EvalMaxSAT)
-./build.sh
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j4
 ```
 
-## 📖 Utilisation
-
-### Exécutables disponibles
+## Usage
 
 ```bash
-# Programme principal (tous les tests de base)
-./build/rbac_main
+# Single run with options (opt1 to opt6)
+./rbac_main --opt1 ../data/Real/zoo.csv 25 30        # GREEDY + LS
+./rbac_main --opt2 ../data/Real/zoo.csv 25 30        # GREEDY + Fix_A/Fix_B
+./rbac_main --opt3 ../data/Real/zoo.csv 25 30        # GREEDY + LNS
+./rbac_main --opt4 ../data/Real/zoo.csv 25 30        # GREEDY + LS + LNS
+./rbac_main --opt5 ../data/Real/zoo.csv 25 30        # GREEDY + Fix_A/Fix_B + LNS
+./rbac_main --opt6 ../data/Real/zoo.csv 25 30        # GREEDY + LS + Fix_A/Fix_B + LNS
 
-# Options du programme principal
-./build/rbac_main --nolk        # Tests NoLk seulement
-./build/rbac_main --nocorrupt   # Tests NoCorrupt seulement
-./build/rbac_main --performance # Tests de performance
-./build/rbac_main --all         # Tous les tests
-./build/rbac_main --help        # Aide
+# Batch mode on all datasets
+./rbac_main --batch 30
 
-# Tests spécifiques
-./build/test_nolk      # Tests détaillés NoLk
-./build/test_nocorrupt # Tests détaillés NoCorrupt
-./build/test_all       # Tests complets avec scalabilité
+# With timeout (seconds)
+./rbac_main --opt2 ../data/Real/apj.csv 454 60
 ```
 
-### Exemple d'utilisation en C++
+Arguments: `<csv_file> <k> <timeout_seconds>`
 
-```cpp
-#include "RBACMaintenanceNoLk.hpp"
-#include "RBACMaintenanceNoCorrupt.hpp"
-
-int main() {
-    // Définir les matrices A et B
-    Matrix A({
-        {1, 0},  // u0: rôle 0
-        {0, 1}   // u1: rôle 1
-    });
-    
-    Matrix B({
-        {1, 0, 0, 0},  // rôle 0: read r0
-        {0, 0, 1, 0}   // rôle 1: read r1
-    });
-    
-    // ===== NoLk =====
-    RBAC_Maintenance_NoLk solver_nolk(2);  // k=2 rôles
-    
-    // Vérifier NoLk
-    auto [sat, time] = solver_nolk.verify_nolk_via_sat(A, B, 0, 1);
-    
-    // Ajouter un sujet
-    std::vector<int> permissions = {1, 0, 1, 0};  // read r0, read r1
-    auto result = solver_nolk.add_subject_nolk(permissions, 0, 1, A, B);
-    
-    // ===== NoCorrupt =====
-    RBAC_Maintenance_NoCorrupt solver_nocor(2);
-    
-    // Vérifier via graphe (plus rapide)
-    auto [ok, t] = solver_nocor.verify_nocorrupt_via_graph(A, B, 0, 1);
-    
-    // Modifier une règle
-    auto mod = solver_nocor.modify_rule_nocorrupt(0, 0, "write", 0, 1, A, B);
-    
-    return 0;
-}
-```
-
-## 📁 Structure du projet
+## Project Structure
 
 ```
-cpp/
-├── CMakeLists.txt          # Configuration CMake
-├── build.sh                # Script de compilation
-├── README.md               # Ce fichier
-├── src/
-│   ├── Matrix.hpp          # Classe Matrix
-│   ├── SATSolver.hpp       # Interface solveur SAT/MaxSAT
-│   ├── SATSolver.cpp       # Implémentation avec EvalMaxSAT
-│   ├── RBACMaintenanceNoLk.hpp    # Header NoLk
-│   ├── RBACMaintenanceNoLk.cpp    # Implémentation NoLk
-│   ├── RBACMaintenanceNoCorrupt.hpp   # Header NoCorrupt
-│   ├── RBACMaintenanceNoCorrupt.cpp   # Implémentation NoCorrupt
-│   └── main.cpp            # Programme principal
-├── test_nolk.cpp           # Tests NoLk
-├── test_nocorrupt.cpp      # Tests NoCorrupt
-├── test_all.cpp            # Tests complets
-├── build/                  # Répertoire de build (généré)
-└── third_party/
-    └── EvalMaxSAT/         # Solveur MaxSAT (cloné automatiquement)
+src/
+  main.cpp              # Main program with opt1-opt6
+  BMF.cpp / BMF.hpp     # MaxSAT-based BMF solver (GI, LNS)
+  BMFLocalSearch.cpp/hpp # Local search (LS, WLS)
+  SATSolver.cpp/hpp     # SAT/MaxSAT interface (EvalMaxSAT)
+  Matrix.hpp            # Matrix data structure
+  CSVMatrixLoader.hpp   # CSV reader
+  DataUtils.hpp         # Configuration & results I/O
+  verif.py              # Python verification script
+data/
+  Real/                 # Real-world benchmark datasets (31 CSV)
+  Synthetic/            # Synthetic datasets (12 CSV)
+third_party/
+  EvalMaxSAT/           # MaxSAT solver
+  minisat220/           # SAT solver backend
+  MaLib/                # Utility library
 ```
 
-## 🔬 Correspondance Python/Cython → C++
+## Dependencies
 
-| Python/Cython | C++ |
-|--------------|-----|
-| `RBAC_Maintenance_NoLk` | `RBAC_Maintenance_NoLk` |
-| `RBAC_Maintenance_nocorrupt` | `RBAC_Maintenance_NoCorrupt` |
-| `VariableManager` | `VariableManager` |
-| `pysat.solvers.Solver` | `SATSolver` (EvalMaxSAT) |
-| `pysat.examples.rc2.RC2` | `SATSolver::add_soft_clause()` |
-| `flow_direct()` | `flow_direct()` |
-| `flow_indirect()` | `flow_indirect()` |
-| `flow_indirect_optimized()` | `flow_indirect_optimized()` |
-| `nolk_constraint()` | `nolk_constraint()` |
-| `nocorrupt_constraint()` | `nocorrupt_constraint()` |
-| `_verify_nolk_via_sat()` | `verify_nolk_via_sat()` |
-| `_verify_nocorrupt_via_graph()` | `verify_nocorrupt_via_graph()` |
-| `add_subject_nolk()` | `add_subject_nolk()` |
-| `add_object_nolk()` | `add_object_nolk()` |
-| `add_subject_nocorrupt()` | `add_subject_nocorrupt()` |
-| `add_object_nocorrupt()` | `add_object_nocorrupt()` |
-| `modify_rule_nocorrupt()` | `modify_rule_nocorrupt()` |
+- C++17 compiler (GCC, Clang)
+- CMake >= 3.10
+- EvalMaxSAT (included in third_party/)
 
-## ⚡ Performance
+## License
 
-Le solveur EvalMaxSAT avec CaDiCaL offre d'excellentes performances pour les problèmes MaxSAT pondérés. Les temps de résolution typiques:
-
-| m × n_obj | k | Vérification | Ajout Sujet |
-|-----------|---|--------------|-------------|
-| 10 × 5 | 3 | < 1 ms | < 5 ms |
-| 20 × 10 | 5 | < 5 ms | < 20 ms |
-| 50 × 25 | 8 | < 50 ms | < 200 ms |
-| 100 × 50 | 10 | < 200 ms | < 1 s |
-
-## 📚 Références
-
-- EvalMaxSAT: https://github.com/FlorentAvellaneda/EvalMaxSAT
-- CaDiCaL: https://github.com/arminbiere/cadical
+See individual licenses in `third_party/` for EvalMaxSAT, CaDiCaL, Glucose, and MiniSat.
