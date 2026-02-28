@@ -1,0 +1,50 @@
+# Build
+build/
+
+# macOS
+.DS_Store
+
+# Python cache
+__pycache__/
+
+# Fichiers backup/old
+*.backup
+*.old
+*.old2
+main_clean.cpp
+
+# Documentation (exclue du repo)
+docs/
+
+# Fichiers contenant "corethink" ou "resultat"
+*corethink*
+*resultat*
+*coreThink*
+
+# Fichiers de résultats dans data/
+data/resultats_batch*
+data/lswls
+data/GI_*
+data/SimplExi.md
+data/SimplUni.md
+data/DBLP.csv
+data/test.csv
+
+# CSV en doublon a la racine de data/ (deja dans data/Real/)
+data/*.csv
+
+# Fichiers .dat (doublons)
+data/Real/dat/
+data/Synthetic/dat/
+
+# Donnees dupliquees (sous-dossiers SimplExi, SimplUni, etc.)
+data/Real/SimplExi/
+data/Real/SimplExiComplet/
+data/Real/SimplIteress/
+data/Real/SimplUni/
+
+# Divers
+*.o
+*.a
+*.so
+*.dylib
