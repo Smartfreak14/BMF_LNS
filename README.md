@@ -30,7 +30,7 @@ make -j4
 ## Usage
 
 ```bash
-# Single run with options (opt1 to opt6)
+# Single run with options (opt1 to opt6) move the file path to execute on all data
 ./rbac_main --opt1 ../data/Real/zoo.csv 25 30        # GREEDY + LS
 ./rbac_main --opt2 ../data/Real/zoo.csv 25 30        # GREEDY + Fix_A/Fix_B
 ./rbac_main --opt3 ../data/Real/zoo.csv 25 30        # GREEDY + LNS
@@ -38,8 +38,8 @@ make -j4
 ./rbac_main --opt5 ../data/Real/zoo.csv 25 30        # GREEDY + Fix_A/Fix_B + LNS
 ./rbac_main --opt6 ../data/Real/zoo.csv 25 30        # GREEDY + LS + Fix_A/Fix_B + LNS
 
-# Batch mode on all datasets
-./rbac_main --batch 30
+# for helper option
+./rbac_main --help
 
 # With timeout (seconds)
 ./rbac_main --opt2 ../data/Real/apj.csv 454 60
