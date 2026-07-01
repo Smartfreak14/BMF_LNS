@@ -2,7 +2,7 @@
 #include <vector>
 #include <iostream>
 
-// Classe de matrice binaire pour RBAC
+// Binary matrix class for Boolean Matrix Factorization
 class Matrix {
 public:
     std::vector<std::vector<int>> data;
@@ -21,7 +21,7 @@ public:
     int& operator()(int i, int j) { return data[i][j]; }
     int operator()(int i, int j) const { return data[i][j]; }
     
-    // Mulutiplication booleene de matrices
+    // Boolean matrix multiplication: (A * B)[i,j] = OR_k (A[i,k] AND B[k,j])
     Matrix multiply(const Matrix& B) const {
         Matrix result(rows, B.cols, 0);
         for (int i = 0; i < rows; i++) {

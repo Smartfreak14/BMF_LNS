@@ -3,103 +3,64 @@
 #include <algorithm>
 #include <numeric>
 #include <iomanip>
-#include <cmath>
 #include <climits>
-#include <unordered_set>
+#include <limits>
 
 BMFLocalSearch::BMFLocalSearch(int k_factors, const Matrix& matrix, unsigned seed)
     : m(matrix.rows), n(matrix.cols), k(k_factors), M(matrix),
       A(m, k, 0), B(k, n, 0),
-      // OPTIMISATION: Allocation contigue pour meilleur cache
-      count_flat(m * n, 0),
-      score_A_flat(m * k, 0),
-      score_B_flat(k * n, 0),
-      // OPTIMISATION: unordered_set pour O(1) insert/remove
-      A_ones_set(k),
-      B_ones_set(k),
-      rng(seed) {
-    // Initialiser les vecteurs legacy pour compatibilité
-    count.resize(m, std::vector<int>(n, 0));
-    score_A.resize(m, std::vector<int>(k, 0));
-    score_B.resize(k, std::vector<int>(n, 0));
-    B_ones_cols.resize(k);
-    A_ones_rows.resize(k);
-}
+      rng(seed) {}
 
 
 void BMFLocalSearch::initialize_greedy() {
-    // Initialisation gloutonne: pour chaque facteur, couvrir les 1 non couverts
-    
-    // Matrice des 1 encore non couverts
     std::vector<std::vector<bool>> uncovered(m, std::vector<bool>(n, false));
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            if (M(i, j) == 1) {
+    for (int i = 0; i < m; i++)
+        for (int j = 0; j < n; j++)
+            if (M(i, j) == 1)
                 uncovered[i][j] = true;
-            }
-        }
-    }
-    
-    // Initialiser A et B à 0
+
     for (int i = 0; i < m; i++)
         for (int l = 0; l < k; l++)
             A(i, l) = 0;
     for (int l = 0; l < k; l++)
         for (int j = 0; j < n; j++)
             B(l, j) = 0;
-    
-    // Pour chaque facteur
+
     for (int l = 0; l < k; l++) {
-        // Trouver la colonne avec le plus de 1 non couverts
         int best_col = -1;
         int best_count = 0;
         for (int j = 0; j < n; j++) {
-            int count = 0;
-            for (int i = 0; i < m; i++) {
-                if (uncovered[i][j]) count++;
-            }
-            if (count > best_count) {
-                best_count = count;
-                best_col = j;
-            }
+            int cnt = 0;
+            for (int i = 0; i < m; i++)
+                if (uncovered[i][j]) cnt++;
+            if (cnt > best_count) { best_count = cnt; best_col = j; }
         }
-        
-        if (best_col == -1 || best_count == 0) break;  // Plus de 1 à couvrir
-        
-        // B[l, best_col] = 1
+        if (best_col == -1 || best_count == 0) break;
+
         B(l, best_col) = 1;
-        
-        // Pour chaque ligne i où M[i, best_col] = 1, A[i, l] = 1
         for (int i = 0; i < m; i++) {
             if (M(i, best_col) == 1) {
                 A(i, l) = 1;
-                // Marquer toutes les cellules couvertes par cette ligne
-                for (int j = 0; j < n; j++) {
-                    if (B(l, j) == 1 && uncovered[i][j]) {
+                for (int j = 0; j < n; j++)
+                    if (B(l, j) == 1 && uncovered[i][j])
                         uncovered[i][j] = false;
-                    }
-                }
             }
         }
-        
-        // Étendre B[l, :] pour couvrir plus de 1 avec les lignes sélectionnées
+
         for (int j = 0; j < n; j++) {
             if (B(l, j) == 0) {
                 int gain = 0;
                 for (int i = 0; i < m; i++) {
                     if (A(i, l) == 1) {
-                        if (uncovered[i][j]) gain++;  // 1 non couvert qu'on va couvrir
-                        else if (M(i, j) == 0) gain--;  // 0 qu'on va mal couvrir
+                        if (uncovered[i][j]) gain++;
+                        else if (M(i, j) == 0) gain--;
                     }
                 }
                 if (gain > 0) {
                     B(l, j) = 1;
-                    // Marquer comme couvert
-                    for (int i = 0; i < m; i++) {
-                        if (A(i, l) == 1 && uncovered[i][j]) {
+                    for (int i = 0; i < m; i++)
+                        if (A(i, l) == 1 && uncovered[i][j])
                             uncovered[i][j] = false;
-                        }
-                    }
                 }
             }
         }
@@ -107,687 +68,608 @@ void BMFLocalSearch::initialize_greedy() {
 }
 
 
+// Rebuild toutes les structures depuis (A, B, M). Appeler apres modification
+// externe de A/B.
 void BMFLocalSearch::compute_all_counts() {
-    // OPTIMISATION: Utilise la mémoire contigue pour meilleur cache
-    // count[i][j] = nombre de l tels que A[i,l] = 1 ET B[l,j] = 1
-    std::fill(count_flat.begin(), count_flat.end(), 0);
-    
+    nbcover_flat.assign(m * n, 0);
+
+    rows_A.assign(k, {});
+    cols_B.assign(k, {});
+    cols_A.assign(m, {});
+    rows_B.assign(n, {});
+    zero_cover_in_row.assign(m, {});
+    zero_cover_in_col.assign(n, {});
+
+    for (int l = 0; l < k; l++) {
+        rows_A[l].resize_capacity(m);
+        cols_B[l].resize_capacity(n);
+    }
+    for (int i = 0; i < m; i++) {
+        cols_A[i].resize_capacity(k);
+        zero_cover_in_row[i].resize_capacity(n);
+    }
+    for (int j = 0; j < n; j++) {
+        rows_B[j].resize_capacity(k);
+        zero_cover_in_col[j].resize_capacity(m);
+    }
+
+    score_A_flat.assign(m * k, 0.0);
+    score_B_flat.assign(k * n, 0.0);
+    weight_flat.assign(m * n, 1.0);
+
+    pos_score_A.clear();
+    pos_score_A.resize_capacity(m * k);
+    pos_score_B.clear();
+    pos_score_B.resize_capacity(k * n);
+    unsat_hard_cells.clear();
+    unsat_hard_cells.resize_capacity(m * n);
+    unsat_soft_cells.clear();
+    unsat_soft_cells.resize_capacity(m * n);
+
     for (int i = 0; i < m; i++) {
         for (int l = 0; l < k; l++) {
             if (A(i, l) == 1) {
-                // Pour chaque j où B[l,j] = 1, incrémenter count[i,j]
-                for (int j = 0; j < n; j++) {
-                    if (B(l, j) == 1) {
-                        count_flat[i * n + j]++;
-                    }
-                }
+                rows_A[l].insert(i);
+                cols_A[i].insert(l);
             }
         }
     }
-    
-    // Synchroniser avec la structure legacy
-    for (int i = 0; i < m; i++) {
+    for (int l = 0; l < k; l++) {
         for (int j = 0; j < n; j++) {
-            count[i][j] = count_flat[i * n + j];
+            if (B(l, j) == 1) {
+                cols_B[l].insert(j);
+                rows_B[j].insert(l);
+            }
         }
     }
+
+    for (int i = 0; i < m; i++) {
+        for (int l : cols_A[i].as_vector()) {
+            for (int j : cols_B[l].as_vector()) {
+                nbcover_flat[i * n + j]++;
+            }
+        }
+    }
+
+    for (int i = 0; i < m; i++) {
+        int base = i * n;
+        for (int j = 0; j < n; j++) {
+            int nb = nbcover_flat[base + j];
+            if (nb == 0) {
+                zero_cover_in_row[i].insert(j);
+                zero_cover_in_col[j].insert(i);
+            }
+            int m_ij = M(i, j);
+            if (m_ij == -1) continue;
+            int e = err_val(m_ij, nb);
+            if (e) {
+                int idx = base + j;
+                if (m_ij == 1) unsat_soft_cells.insert(idx);
+                else           unsat_hard_cells.insert(idx);
+            }
+        }
+    }
+
+    for (int i = 0; i < m; i++) {
+        for (int l = 0; l < k; l++) {
+            double s = 0.0;
+            int sign = (A(i, l) == 1) ? -1 : +1;
+            for (int j : cols_B[l].as_vector()) {
+                int m_ij = M(i, j);
+                if (m_ij == -1) continue;
+                int nb = nbcover_flat[i * n + j];
+                s += score_contrib(m_ij, nb, sign, weight_flat[i * n + j]);
+            }
+            score_A_flat[i * k + l] = s;
+            if (s > 1e-9) pos_score_A.insert(i * k + l);
+        }
+    }
+    for (int l = 0; l < k; l++) {
+        for (int j = 0; j < n; j++) {
+            double s = 0.0;
+            int sign = (B(l, j) == 1) ? -1 : +1;
+            for (int i : rows_A[l].as_vector()) {
+                int m_ij = M(i, j);
+                if (m_ij == -1) continue;
+                int nb = nbcover_flat[i * n + j];
+                s += score_contrib(m_ij, nb, sign, weight_flat[i * n + j]);
+            }
+            score_B_flat[l * n + j] = s;
+            if (s > 1e-9) pos_score_B.insert(l * n + j);
+        }
+    }
+}
+
+
+int BMFLocalSearch::count_errors() const {
+    int e = 0;
+    for (int i = 0; i < m; i++) {
+        int base = i * n;
+        for (int j = 0; j < n; j++) {
+            int m_ij = M(i, j);
+            if (m_ij == -1) continue;
+            e += err_val(m_ij, nbcover_flat[base + j]);
+        }
+    }
+    return e;
 }
 
 
 void BMFLocalSearch::flip_A(int i, int l) {
-    // 1. Mettre à jour count pour toutes les cellules (i, j) où B[l,j] = 1
-    int delta = (A(i, l) == 0) ? 1 : -1;
-    const int base_idx = i * n; 
+    bool old_a = (A(i, l) == 1);
+    int dir = old_a ? -1 : +1;
+
     
-    for (int j = 0; j < n; j++) {
-        if (B(l, j) == 1) {
-            count_flat[base_idx + j] += delta;
-            count[i][j] += delta;  
+    {
+        std::vector<int> snap = zero_cover_in_row[i].as_vector();
+        for (int j : snap) {
+            if (B(l, j) == 1) continue;
+            int m_ij = M(i, j);
+            if (m_ij == -1) continue;
+            double w = weight_flat[i * n + j];
+            double contrib = score_contrib(m_ij, 0, +1, w);
+            if (contrib == 0.0) continue;
+            double delta = old_a ? -contrib : +contrib;
+            score_B_flat[l * n + j] += delta;
+            update_pos_score_B(l, j);
         }
     }
-    
-    // 2. Flipper A[i,l]
-    A(i, l) = 1 - A(i, l);
-    
-    // NOTE: Les étapes 3, 4, 5 de mise à jour des scores non pondérés 
-    // sont supprimées car WLS calcule les scores pondérés à la volée.
-    // Les scores non pondérés (score_A, score_B) ne sont plus maintenus.
+
+    std::vector<int> snap_cols_B_l = cols_B[l].as_vector();
+
+    for (int j : snap_cols_B_l) {
+        int idx_ij = i * n + j;
+        int old_nb = nbcover_flat[idx_ij];
+        int new_nb = old_nb + dir;
+        int m_ij = M(i, j);
+        double w = weight_flat[idx_ij];
+
+        const auto rB = rows_B[j].as_vector();
+        for (int l2 : rB) {
+            if (l2 == l) continue;
+            int sign2 = (A(i, l2) == 1) ? -1 : +1;
+            double oc = score_contrib(m_ij, old_nb, sign2, w);
+            double nc = score_contrib(m_ij, new_nb, sign2, w);
+            double d = nc - oc;
+            if (d != 0.0) {
+                score_A_flat[i * k + l2] += d;
+                update_pos_score_A(i, l2);
+            }
+        }
+
+        const auto cA = cols_A[i].as_vector();
+        for (int l2 : cA) {
+            if (l2 == l) continue;
+            int sign2 = (B(l2, j) == 1) ? -1 : +1;
+            double oc = score_contrib(m_ij, old_nb, sign2, w);
+            double nc = score_contrib(m_ij, new_nb, sign2, w);
+            double d = nc - oc;
+            if (d != 0.0) {
+                score_B_flat[l2 * n + j] += d;
+                update_pos_score_B(l2, j);
+            }
+        }
+
+        
+        double oc_lj = old_a    ? score_contrib(m_ij, old_nb, -1, w) : 0.0;
+        double nc_lj = (!old_a) ? score_contrib(m_ij, new_nb, -1, w) : 0.0;
+        double d_lj = nc_lj - oc_lj;
+        if (d_lj != 0.0) {
+            score_B_flat[l * n + j] += d_lj;
+            update_pos_score_B(l, j);
+        }
+
+        nbcover_flat[idx_ij] = new_nb;
+        if (old_nb > 0 && new_nb == 0) {
+            zero_cover_in_row[i].insert(j);
+            zero_cover_in_col[j].insert(i);
+        } else if (old_nb == 0 && new_nb > 0) {
+            zero_cover_in_row[i].erase(j);
+            zero_cover_in_col[j].erase(i);
+        }
+
+        if (m_ij != -1) {
+            int oe = err_val(m_ij, old_nb);
+            int ne = err_val(m_ij, new_nb);
+            if (oe != ne) {
+                if (m_ij == 1) {
+                    if (ne) unsat_soft_cells.insert(idx_ij);
+                    else    unsat_soft_cells.erase(idx_ij);
+                } else {
+                    if (ne) unsat_hard_cells.insert(idx_ij);
+                    else    unsat_hard_cells.erase(idx_ij);
+                }
+            }
+        }
+    }
+
+    A(i, l) = old_a ? 0 : 1;
+    if (old_a) {
+        rows_A[l].erase(i);
+        cols_A[i].erase(l);
+    } else {
+        rows_A[l].insert(i);
+        cols_A[i].insert(l);
+    }
+
+    // score_A(i, l) : direction inversee, recalcul complet sur cols_B[l].
+    double s = 0.0;
+    int sign = old_a ? +1 : -1;
+    for (int j : snap_cols_B_l) {
+        int m_ij = M(i, j);
+        if (m_ij == -1) continue;
+        s += score_contrib(m_ij, nbcover_flat[i * n + j], sign, weight_flat[i * n + j]);
+    }
+    score_A_flat[i * k + l] = s;
+    update_pos_score_A(i, l);
 }
+
 
 void BMFLocalSearch::flip_B(int l, int j) {
-    // 1. Mettre à jour count pour toutes les cellules (i, j) où A[i,l] = 1
-    int delta = (B(l, j) == 0) ? 1 : -1;
-    
-    for (int i = 0; i < m; i++) {
-        if (A(i, l) == 1) {
-            count_flat[i * n + j] += delta;
-            count[i][j] += delta;  // Sync legacy
+    bool old_b = (B(l, j) == 1);
+    int dir = old_b ? -1 : +1;
+
+    {
+        std::vector<int> snap = zero_cover_in_col[j].as_vector();
+        for (int i : snap) {
+            if (A(i, l) == 1) continue;
+            int m_ij = M(i, j);
+            if (m_ij == -1) continue;
+            double w = weight_flat[i * n + j];
+            double contrib = score_contrib(m_ij, 0, +1, w);
+            if (contrib == 0.0) continue;
+            double delta = old_b ? -contrib : +contrib;
+            score_A_flat[i * k + l] += delta;
+            update_pos_score_A(i, l);
         }
     }
-    
-    // 2. Flipper B[l,j]
-    B(l, j) = 1 - B(l, j);
-    
-    // NOTE: Les étapes 3, 4, 5 de mise à jour des scores non pondérés 
-    // sont supprimées car WLS calcule les scores pondérés à la volée.
-    // Les scores non pondérés (score_A, score_B) ne sont plus maintenus.
-}
 
-int BMFLocalSearch::count_errors() const {
-    int errors = 0;
-    for (int i = 0; i < m; i++) {
-        const int base_idx = i * n;  // OPTIMISATION: Précalculer l'offset
-        for (int j = 0; j < n; j++) {
-            if (M(i, j) == -1) continue;
-            int computed = (count_flat[base_idx + j] > 0) ? 1 : 0;
-            if (computed != M(i, j)) errors++;
+    std::vector<int> snap_rows_A_l = rows_A[l].as_vector();
+
+    for (int i : snap_rows_A_l) {
+        int idx_ij = i * n + j;
+        int old_nb = nbcover_flat[idx_ij];
+        int new_nb = old_nb + dir;
+        int m_ij = M(i, j);
+        double w = weight_flat[idx_ij];
+
+        const auto cA = cols_A[i].as_vector();
+        for (int l2 : cA) {
+            if (l2 == l) continue;
+            int sign2 = (B(l2, j) == 1) ? -1 : +1;
+            double oc = score_contrib(m_ij, old_nb, sign2, w);
+            double nc = score_contrib(m_ij, new_nb, sign2, w);
+            double d = nc - oc;
+            if (d != 0.0) {
+                score_B_flat[l2 * n + j] += d;
+                update_pos_score_B(l2, j);
+            }
         }
-    }
-    return errors;
-}
 
-// ==================== MÉTHODE BASIC====================
+        const auto rB = rows_B[j].as_vector();
+        for (int l2 : rB) {
+            if (l2 == l) continue;
+            int sign2 = (A(i, l2) == 1) ? -1 : +1;
+            double oc = score_contrib(m_ij, old_nb, sign2, w);
+            double nc = score_contrib(m_ij, new_nb, sign2, w);
+            double d = nc - oc;
+            if (d != 0.0) {
+                score_A_flat[i * k + l2] += d;
+                update_pos_score_A(i, l2);
+            }
+        }
 
- 
-LocalSearchResult BMFLocalSearch::solve_basic(int /* max_iterations */, bool verbose) {
-    LocalSearchResult result;
-    result.method_name = "BASIC";
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    // Initialisation
-    compute_all_counts();
-    
-    int errors = count_errors();
-    result.initial_errors = errors;
-    result.error_history.push_back(errors);
-    
-    if (verbose) {
-        std::cout << "  [BASIC] Initial errors: " << errors << std::endl;
-    }
-    
-    int best_errors = errors;
-    Matrix A_best = A;
-    Matrix B_best = B;
-    int iter = 0;
-    
-    // Boucle jusqu'à minimum local (pas de limite d'itérations)
-    while (errors > 0) {
-        iter++;
-        result.iterations = iter;
-        
-        // Recalculer TOUS les scores à chaque itération (recherche exhaustive)
-        // pour garantir de trouver le meilleur flip disponible
-        char best_type = ' ';
-        int best_idx1 = -1, best_idx2 = -1;
-        int best_score = 0;
-        
-        // Chercher le meilleur flip dans A
-        for (int i = 0; i < m; i++) {
-            for (int l = 0; l < k; l++) {
-                int score = compute_score_A(i, l);
-                if (score > best_score) {
-                    best_score = score;
-                    best_type = 'A';
-                    best_idx1 = i;
-                    best_idx2 = l;
+        double oc_il = old_b    ? score_contrib(m_ij, old_nb, -1, w) : 0.0;
+        double nc_il = (!old_b) ? score_contrib(m_ij, new_nb, -1, w) : 0.0;
+        double d_il = nc_il - oc_il;
+        if (d_il != 0.0) {
+            score_A_flat[i * k + l] += d_il;
+            update_pos_score_A(i, l);
+        }
+
+        nbcover_flat[idx_ij] = new_nb;
+        if (old_nb > 0 && new_nb == 0) {
+            zero_cover_in_row[i].insert(j);
+            zero_cover_in_col[j].insert(i);
+        } else if (old_nb == 0 && new_nb > 0) {
+            zero_cover_in_row[i].erase(j);
+            zero_cover_in_col[j].erase(i);
+        }
+
+        if (m_ij != -1) {
+            int oe = err_val(m_ij, old_nb);
+            int ne = err_val(m_ij, new_nb);
+            if (oe != ne) {
+                if (m_ij == 1) {
+                    if (ne) unsat_soft_cells.insert(idx_ij);
+                    else    unsat_soft_cells.erase(idx_ij);
+                } else {
+                    if (ne) unsat_hard_cells.insert(idx_ij);
+                    else    unsat_hard_cells.erase(idx_ij);
                 }
             }
         }
-        
-        // Chercher le meilleur flip dans B
-        for (int l = 0; l < k; l++) {
+    }
+
+    B(l, j) = old_b ? 0 : 1;
+    if (old_b) {
+        cols_B[l].erase(j);
+        rows_B[j].erase(l);
+    } else {
+        cols_B[l].insert(j);
+        rows_B[j].insert(l);
+    }
+
+    double s = 0.0;
+    int sign = old_b ? +1 : -1;
+    for (int i : snap_rows_A_l) {
+        int m_ij = M(i, j);
+        if (m_ij == -1) continue;
+        s += score_contrib(m_ij, nbcover_flat[i * n + j], sign, weight_flat[i * n + j]);
+    }
+    score_B_flat[l * n + j] = s;
+    update_pos_score_B(l, j);
+}
+
+
+void BMFLocalSearch::apply_weight_change(int i, int j, double dw) {
+    int idx_ij = i * n + j;
+    weight_flat[idx_ij] += dw;
+    int m_ij = M(i, j);
+    if (m_ij == -1) return;
+    int nb = nbcover_flat[idx_ij];
+
+    for (int l : rows_B[j].as_vector()) {
+        int sign = (A(i, l) == 1) ? -1 : +1;
+        int de = err_val(m_ij, nb + sign) - err_val(m_ij, nb);
+        if (de != 0) {
+            score_A_flat[i * k + l] += -dw * (double)de;
+            update_pos_score_A(i, l);
+        }
+    }
+    for (int l : cols_A[i].as_vector()) {
+        int sign = (B(l, j) == 1) ? -1 : +1;
+        int de = err_val(m_ij, nb + sign) - err_val(m_ij, nb);
+        if (de != 0) {
+            score_B_flat[l * n + j] += -dw * (double)de;
+            update_pos_score_B(l, j);
+        }
+    }
+}
+
+
+// BMS K=10 : tire K candidats aleatoires dans pos_score, garde le meilleur.
+bool BMFLocalSearch::pick_good_flip(char& type, int& a, int& b) {
+    int sa = (int)pos_score_A.size();
+    int sb = (int)pos_score_B.size();
+    int total = sa + sb;
+    if (total == 0) return false;
+
+    const int K_BMS = 10;
+    double best = -std::numeric_limits<double>::infinity();
+    char bt = ' ';
+    int ba = -1, bb = -1;
+
+    std::uniform_int_distribution<int> pick_pool(0, total - 1);
+    for (int t = 0; t < K_BMS; t++) {
+        int r = pick_pool(rng);
+        if (r < sa) {
+            int idx = pos_score_A.get_random(rng);
+            double s = score_A_flat[idx];
+            if (s > best) { best = s; bt = 'A'; ba = idx / k; bb = idx % k; }
+        } else {
+            int idx = pos_score_B.get_random(rng);
+            double s = score_B_flat[idx];
+            if (s > best) { best = s; bt = 'B'; ba = idx / n; bb = idx % n; }
+        }
+    }
+    type = bt; a = ba; b = bb;
+    return true;
+}
+
+
+// Cherche (i, l, j) : M=1, nbcover=0, A[i,l]=0, B[l,j]=0, score_A~0, score_B~0.
+bool BMFLocalSearch::try_double_flip() {
+    if (unsat_soft_cells.empty()) return false;
+    const double EPS = 1e-9;
+
+    std::vector<int> cells = unsat_soft_cells.as_vector();
+    std::shuffle(cells.begin(), cells.end(), rng);
+
+    const int MAX_CELLS = 64;
+    const int MAX_K_PER_CELL = 64;
+    int n_cells = std::min((int)cells.size(), MAX_CELLS);
+
+    for (int c = 0; c < n_cells; c++) {
+        int cell_idx = cells[c];
+        int i = cell_idx / n;
+        int j = cell_idx % n;
+
+        std::vector<int> ls(k);
+        std::iota(ls.begin(), ls.end(), 0);
+        if (k > MAX_K_PER_CELL) std::shuffle(ls.begin(), ls.end(), rng);
+        int n_ls = std::min(k, MAX_K_PER_CELL);
+
+        for (int t = 0; t < n_ls; t++) {
+            int l = ls[t];
+            if (A(i, l) == 1) continue;
+            if (B(l, j) == 1) continue;
+            if (std::abs(score_A_flat[i * k + l]) > EPS) continue;
+            if (std::abs(score_B_flat[l * n + j]) > EPS) continue;
+            flip_A(i, l);
+            flip_B(l, j);
+            return true;
+        }
+    }
+    return false;
+}
+
+
+// Avec proba sp : smooth (decremente satisfaites w>1). Sinon : penalise
+void BMFLocalSearch::update_weights(double sp, double h_inc, double s_inc, bool& did_smooth) {
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    double r = u(rng);
+
+    if (r < sp) {
+        did_smooth = true;
+        for (int i = 0; i < m; i++) {
+            int base = i * n;
             for (int j = 0; j < n; j++) {
-                int score = compute_score_B(l, j);
-                if (score > best_score) {
-                    best_score = score;
-                    best_type = 'B';
-                    best_idx1 = l;
-                    best_idx2 = j;
-                }
+                int m_ij = M(i, j);
+                if (m_ij == -1) continue;
+                if (err_val(m_ij, nbcover_flat[base + j])) continue;
+                double w = weight_flat[base + j];
+                if (w <= 1.0) continue;
+                double dec = (m_ij == 0) ? h_inc : s_inc;
+                double new_w = std::max(1.0, w - dec);
+                if (new_w != w) apply_weight_change(i, j, new_w - w);
             }
         }
-        
-        // Si aucun flip positif, on a atteint un minimum local
-        if (best_type == ' ' || best_score <= 0) {
-            if (verbose) {
-                std::cout << "  [BASIC] Minimum local atteint à iter " << iter 
-                          << " avec " << errors << " erreurs" << std::endl;
-            }
-            result.stop_reason = "local_minimum";
-            break;
-        }
-        
-        // Effectuer le flip
-        if (best_type == 'A') {
-            flip_A(best_idx1, best_idx2);
-        } else {
-            flip_B(best_idx1, best_idx2);
-        }
-        
-        errors = count_errors();
-        result.error_history.push_back(errors);
-        
-        if (errors < best_errors) {
-            best_errors = errors;
-            A_best = A;
-            B_best = B;
-            
-            if (verbose) {
-                auto now = std::chrono::high_resolution_clock::now();
-                double elapsed = std::chrono::duration<double, std::milli>(now - start_time).count();
-                std::cout << "  [BASIC] Iter " << iter << ": " << errors 
-                          << " erreurs (gain=" << best_score << ", flip=" << best_type 
-                          << ", t=" << std::fixed << std::setprecision(0) << elapsed << "ms)" << std::endl;
-            }
-        }
-        
-        if (errors == 0) {
-            result.success = true;
-            break;
-        }
+        return;
     }
-    
-    auto end_time = std::chrono::high_resolution_clock::now();
-    result.total_time = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-    result.final_errors = best_errors;
-    result.A_solution = A_best;
-    result.B_solution = B_best;
-    result.success = (best_errors == 0);
-    
-    return result;
-}
 
-int BMFLocalSearch::compute_score_A(int i, int l) {
-    // Score = gain d'erreurs si on flippe A[i,l]
-    // gain > 0 = amélioration (moins d'erreurs après flip)
-    int gain = 0;
-    const int base_idx = i * n; 
-    
-    if (A(i, l) == 0) {
-        // Flip 0 -> 1
-        for (int j = 0; j < n; j++) {
-            if (B(l, j) == 1) {
-                if (M(i, j) == -1) continue;  
-                
-                int old_count = count_flat[base_idx + j];
-                if (old_count == 0) {
-                    if (M(i, j) == 1) gain++;   // Erreur corrigée
-                    else gain--;                 // Erreur créée
-                }
-            }
+    did_smooth = false;
+    if (!unsat_hard_cells.empty()) {
+        std::vector<int> snap = unsat_hard_cells.as_vector();
+        for (int idx : snap) {
+            int i = idx / n, j = idx % n;
+            apply_weight_change(i, j, h_inc);
         }
     } else {
-        // Flip 1 -> 0
-        for (int j = 0; j < n; j++) {
-            if (B(l, j) == 1) {
-                if (M(i, j) == -1) continue;
-                
-                int old_count = count_flat[base_idx + j];
-                if (old_count == 1) {
-                    if (M(i, j) == 1) gain--;   // Erreur créée
-                    else gain++;                 // Erreur corrigée
-                }
-            }
+        std::vector<int> snap = unsat_soft_cells.as_vector();
+        for (int idx : snap) {
+            int i = idx / n, j = idx % n;
+            apply_weight_change(i, j, s_inc);
         }
     }
-    
-    return gain;
-}
-
-int BMFLocalSearch::compute_score_B(int l, int j) {
-    int gain = 0;
-    
-    if (B(l, j) == 0) {
-        // Flip 0 -> 1
-        for (int i = 0; i < m; i++) {
-            if (A(i, l) == 1) {
-                if (M(i, j) == -1) continue;
-                
-                int old_count = count_flat[i * n + j];  // OPTIMISATION: accès contigu
-                if (old_count == 0) {
-                    if (M(i, j) == 1) gain++;
-                    else gain--;
-                }
-            }
-        }
-    } else {
-        // Flip 1 -> 0
-        for (int i = 0; i < m; i++) {
-            if (A(i, l) == 1) {
-                if (M(i, j) == -1) continue;
-                
-                int old_count = count_flat[i * n + j];
-                if (old_count == 1) {
-                    if (M(i, j) == 1) gain--;
-                    else gain++;
-                }
-            }
-        }
-    }
-    
-    return gain;
 }
 
 
-std::tuple<char, int, int, int> BMFLocalSearch::find_best_flip() {
+void BMFLocalSearch::force_flip_from_unsat() {
+    bool use_hard = !unsat_hard_cells.empty();
+    SparseIntSet& bag = use_hard ? unsat_hard_cells : unsat_soft_cells;
+    if (bag.empty()) return;
+    int cell_idx = bag.get_random(rng);
+    int i = cell_idx / n;
+    int j = cell_idx % n;
+
     char best_type = ' ';
-    int best_idx1 = -1, best_idx2 = -1;
-    int best_score = 0;  // On cherche le meilleur score POSITIF
-    
-    // OPTIMISATION: Utilise la mémoire contiguë pour meilleur cache locality
-    // Chercher dans A
-    for (int i = 0; i < m; i++) {
-        const int base_idx = i * k;
-        for (int l = 0; l < k; l++) {
-            int score = score_A_flat[base_idx + l];
-            if (score > best_score) {
-                best_score = score;
-                best_type = 'A';
-                best_idx1 = i;
-                best_idx2 = l;
-            }
-        }
-    }
-    
-    // Chercher dans B
+    int best_idx = -1;
+    double best_score = -std::numeric_limits<double>::infinity();
     for (int l = 0; l < k; l++) {
-        const int base_idx = l * n;
-        for (int j = 0; j < n; j++) {
-            int score = score_B_flat[base_idx + j];
-            if (score > best_score) {
-                best_score = score;
-                best_type = 'B';
-                best_idx1 = l;
-                best_idx2 = j;
-            }
-        }
+        double sa = score_A_flat[i * k + l];
+        if (sa > best_score) { best_score = sa; best_type = 'A'; best_idx = l; }
+        double sb = score_B_flat[l * n + j];
+        if (sb > best_score) { best_score = sb; best_type = 'B'; best_idx = l; }
     }
-    
-    return {best_type, best_idx1, best_idx2, best_score};
+    if (best_type == 'A') flip_A(i, best_idx);
+    else if (best_type == 'B') flip_B(best_idx, j);
 }
 
 
-void BMFLocalSearch::compute_all_scores() {
-    for (int i = 0; i < m; i++) {
-        for (int l = 0; l < k; l++) {
-            int score = compute_score_A(i, l);
-            score_A_flat[i * k + l] = score;
-            score_A[i][l] = score;  
-        }
-    }
-    
-    for (int l = 0; l < k; l++) {
-        for (int j = 0; j < n; j++) {
-            int score = compute_score_B(l, j);
-            score_B_flat[l * n + j] = score;
-            score_B[l][j] = score;  
-        }
-    }
-}
-// ==================== INTERFACE LEGACY ====================
-
-LocalSearchResult BMFLocalSearch::solve(int max_iterations, bool verbose) {
-    // Par défaut, utiliser BASIC
-    return solve_basic(max_iterations, verbose);
-}
-
-
-
-// ==================== WEIGHTED LOCAL SEARCH ====================
-
-double BMFLocalSearch::compute_weighted_score_A(int i, int l) {
-    // Score pondéré = somme des gains * poids des cellules
-    double gain = 0.0;
-    const int base_idx = i * n;
-    
-    if (A(i, l) == 0) {
-        // Flip 0 -> 1
-        for (int j = 0; j < n; j++) {
-            if (B(l, j) == 1) {
-                if (M(i, j) == -1) continue;
-                
-                int old_count = count_flat[base_idx + j];
-                double w = weights_flat[base_idx + j];
-                if (old_count == 0) {
-                    if (M(i, j) == 1) gain += w;   // Erreur corrigée (pondérée)
-                    else gain -= w;                 // Erreur créée (pondérée)
-                }
-            }
-        }
-    } else {
-        // Flip 1 -> 0
-        for (int j = 0; j < n; j++) {
-            if (B(l, j) == 1) {
-                if (M(i, j) == -1) continue;
-                
-                int old_count = count_flat[base_idx + j];
-                double w = weights_flat[base_idx + j];
-                if (old_count == 1) {
-                    if (M(i, j) == 1) gain -= w;   // Erreur créée
-                    else gain += w;                 // Erreur corrigée
-                }
-            }
-        }
-    }
-    
-    return gain;
-}
-
-double BMFLocalSearch::compute_weighted_score_B(int l, int j) {
-    double gain = 0.0;
-    
-    if (B(l, j) == 0) {
-        for (int i = 0; i < m; i++) {
-            if (A(i, l) == 1) {
-                if (M(i, j) == -1) continue;
-                
-                int old_count = count_flat[i * n + j];
-                double w = weights_flat[i * n + j];
-                if (old_count == 0) {
-                    if (M(i, j) == 1) gain += w;
-                    else gain -= w;
-                }
-            }
-        }
-    } else {
-        for (int i = 0; i < m; i++) {
-            if (A(i, l) == 1) {
-                if (M(i, j) == -1) continue;
-                
-                int old_count = count_flat[i * n + j];
-                double w = weights_flat[i * n + j];
-                if (old_count == 1) {
-                    if (M(i, j) == 1) gain -= w;
-                    else gain += w;
-                }
-            }
-        }
-    }
-    
-    return gain;
-}
-
-std::tuple<char, int, int, double> BMFLocalSearch::find_best_weighted_flip(int current_errors) {
-    char best_type = ' ';
-    int best_idx1 = -1, best_idx2 = -1;
-    double best_score = 0.0;
-    
-    // SEUIL ADAPTATIF
-    double threshold = std::max(2.0, std::min(5.0, 5000.0 / std::max(1, current_errors)));
-    
-    // FOCUS ERREURS: 70% guidé par erreurs, 30% random
-    int total_samples = 400;  // Légèrement réduit
-    int error_guided = total_samples * 7 / 10;
-    int random_samples = total_samples - error_guided;
-    
-    std::uniform_int_distribution<> row_dist(0, m - 1);
-    std::uniform_int_distribution<> col_k_dist(0, k - 1);
-    std::uniform_int_distribution<> col_n_dist(0, n - 1);
-    
-    // 1. Échantillons GUIDÉS PAR ERREURS (plus efficace)
-    // Chercher des cellules en erreur et tester les flips les affectant
-    int error_found = 0;
-    for (int attempt = 0; attempt < error_guided * 3 && error_found < error_guided; attempt++) {
-        int i = row_dist(rng);
-        int j = col_n_dist(rng);
-        if (M(i, j) == -1) continue;
-        
-        int computed = (count_flat[i * n + j] > 0) ? 1 : 0;
-        if (computed != M(i, j)) {
-            // Cellule en erreur trouvée - tester un flip qui l'affecte
-            error_found++;
-            int l = col_k_dist(rng);
-            
-            // Alterner entre A et B
-            if (error_found % 2 == 0) {
-                double score = compute_weighted_score_A(i, l);
-                if (score > best_score) {
-                    best_score = score;
-                    best_type = 'A';
-                    best_idx1 = i;
-                    best_idx2 = l;
-                    if (score > threshold) return {best_type, best_idx1, best_idx2, best_score};
-                }
-            } else {
-                double score = compute_weighted_score_B(l, j);
-                if (score > best_score) {
-                    best_score = score;
-                    best_type = 'B';
-                    best_idx1 = l;
-                    best_idx2 = j;
-                    if (score > threshold) return {best_type, best_idx1, best_idx2, best_score};
-                }
-            }
-        }
-    }
-    
-    // 2. Échantillons RANDOM (exploration)
-    for (int s = 0; s < random_samples; s++) {
-        if (s % 2 == 0) {
-            int i = row_dist(rng);
-            int l = col_k_dist(rng);
-            double score = compute_weighted_score_A(i, l);
-            if (score > best_score) {
-                best_score = score;
-                best_type = 'A';
-                best_idx1 = i;
-                best_idx2 = l;
-                if (score > threshold) return {best_type, best_idx1, best_idx2, best_score};
-            }
-        } else {
-            int l = col_k_dist(rng);
-            int j = col_n_dist(rng);
-            double score = compute_weighted_score_B(l, j);
-            if (score > best_score) {
-                best_score = score;
-                best_type = 'B';
-                best_idx1 = l;
-                best_idx2 = j;
-                if (score > threshold) return {best_type, best_idx1, best_idx2, best_score};
-            }
-        }
-    }
-    
-    return {best_type, best_idx1, best_idx2, best_score};
-}
-
-LocalSearchResult BMFLocalSearch::solve_weighted(int max_iterations, 
-                                                  double penalty_increment,
-                                                  int max_stagnation,
-                                                  bool verbose,
-                                                  std::atomic<bool>* stop_flag) {
+LocalSearchResult BMFLocalSearch::solve_weighted(int max_iterations,
+                                                 bool verbose,
+                                                 std::atomic<bool>* stop_flag,
+                                                 double timeout_ms,
+                                                 double smooth_prob_override,
+                                                 double h_inc,
+                                                 double s_inc) {
     LocalSearchResult result;
     result.method_name = "WEIGHTED";
     auto start_time = std::chrono::high_resolution_clock::now();
-    
-    // Lambda pour vérifier l'interruption
-    auto is_interrupted = [&stop_flag]() -> bool {
-        return stop_flag && stop_flag->load();
+
+    if (h_inc < 1.0) h_inc = 1.0;
+    if (s_inc < 1.0) s_inc = 1.0;
+
+    double sp = (smooth_prob_override > 0.0) ? smooth_prob_override
+                                             : effective_smooth_prob();
+
+    auto elapsed = [&]() {
+        return std::chrono::duration<double, std::milli>(
+            std::chrono::high_resolution_clock::now() - start_time).count();
     };
-    
-    // Initialiser les poids à 1.0
-    weights_flat.assign(m * n, 1.0);
-    
-    // Initialisation des structures de comptage
+    auto interrupted = [&]() {
+        if (stop_flag && stop_flag->load()) return true;
+        if (timeout_ms > 0 && elapsed() >= timeout_ms) return true;
+        return false;
+    };
+
     compute_all_counts();
-    
-    int errors = count_errors();
+
+    int errors = (int)(unsat_hard_cells.size() + unsat_soft_cells.size());
     result.initial_errors = errors;
     result.error_history.push_back(errors);
-    
+
     if (verbose) {
-        std::cout << "  [WEIGHTED] Initial errors: " << errors << std::endl;
+        long long nvars = (long long)m * k + (long long)k * n;
+        std::cout << "  [WEIGHTED] init err=" << errors
+                  << " | n_vars=" << nvars
+                  << " | sp=" << std::scientific << std::setprecision(2) << sp
+                  << " | h_inc=" << std::fixed << std::setprecision(1) << h_inc
+                  << " | s_inc=" << std::fixed << std::setprecision(1) << s_inc
+                  << std::endl;
     }
-    
+
     int best_errors = errors;
-    Matrix A_best = A;
-    Matrix B_best = B;
-    
-    int stagnation = 0;
-    int total_penalty_rounds = 0;
-    int rounds_without_improvement = 0;
+    Matrix A_best = A, B_best = B;
     int iter = 0;
-    int restarts = 0;
-    const int MAX_RESTARTS = 2;  // Nombre max de redémarrages
-    const int RESTART_THRESHOLD = 100;  // Rounds sans amélioration avant restart
-    
-    while (iter < max_iterations && errors > 0 && !is_interrupted()) {
-        // Phase 1: Recherche locale classique jusqu'à stagnation
-        auto [flip_type, idx1, idx2, score] = find_best_weighted_flip(errors);
-        
-        if (flip_type == ' ' || score <= 1e-9) {
-            // Minimum local atteint - appliquer les pénalités
-            stagnation++;
-            
-            if (stagnation >= max_stagnation) {
-                // Augmenter les poids des cellules en erreur
-                total_penalty_rounds++;
-                int penalized = 0;
-                
-                // Augmenter plus agressivement après plusieurs rounds
-                double actual_penalty = penalty_increment * (3.0 + 0.1 * (total_penalty_rounds / 20));
-                
-                for (int i = 0; i < m; i++) {
-                    for (int j = 0; j < n; j++) {
-                        if (M(i, j) == -1) continue;
-                        
-                        int computed = (count_flat[i * n + j] > 0) ? 1 : 0;
-                        if (computed != M(i, j)) {
-                            // Cette cellule est en erreur - augmenter son poids
-                            weights_flat[i * n + j] += actual_penalty;
-                            penalized++;
-                        }
-                    }
-                }
-                
-                if (verbose && total_penalty_rounds % 10 == 1) {
-                    std::cout << "  [WEIGHTED] Penalty round " << total_penalty_rounds 
-                              << ": " << penalized << " cells penalized (penalty=" 
-                              << std::fixed << std::setprecision(2) << actual_penalty 
-                              << "), best=" << best_errors << std::endl;
-                }
-                
-                stagnation = 0;
-                rounds_without_improvement++;
-                
-                // RESTART: Si stagnation trop longue, réinitialiser les poids et perturber
-                if (rounds_without_improvement >= RESTART_THRESHOLD && restarts < MAX_RESTARTS) {
-                    restarts++;
-                    if (verbose) {
-                        std::cout << "  [WEIGHTED] RESTART " << restarts << "/" << MAX_RESTARTS 
-                                  << ": perturbation guidée par les erreurs" << std::endl;
-                    }
-                    
-                    // Réinitialiser les poids à 1.0
-                    std::fill(weights_flat.begin(), weights_flat.end(), 1.0);
-                    
-                    // === PERTURBATION GUIDÉE PAR LES ERREURS ===
-                    // Au lieu de flipper au hasard, on cible les cellules en erreur
-                    
-                    // 1. Collecter les cellules en erreur
-                    std::vector<std::pair<int, int>> error_cells;
-                    for (int i = 0; i < m; i++) {
-                        for (int j = 0; j < n; j++) {
-                            if (M(i, j) == -1) continue;
-                            int computed = (count_flat[i * n + j] > 0) ? 1 : 0;
-                            if (computed != M(i, j)) {
-                                error_cells.push_back({i, j});
-                            }
-                        }
-                    }
-                    
-                    if (!error_cells.empty()) {
-                        std::uniform_int_distribution<> dist_error(0, error_cells.size() - 1);
-                        std::uniform_int_distribution<> dist_k(0, k - 1);
-                        std::uniform_int_distribution<> dist_choice(0, 1);
-                        
-                        // Nombre de perturbations adapté au nombre d'erreurs
-                        // Plus d'erreurs = plus de perturbations
-                        int perturb_count = std::max(1, std::min((int)error_cells.size() / 5, 20));
-                        
-                        for (int p = 0; p < perturb_count; p++) {
-                            // Choisir une cellule EN ERREUR aléatoirement
-                            auto [ei, ej] = error_cells[dist_error(rng)];
-                            int l = dist_k(rng);
-                            
-                            // Flipper dans A OU B (pas les deux!) pour éviter le chaos
-                            if (dist_choice(rng) == 0) {
-                                flip_A(ei, l);
-                            } else {
-                                flip_B(l, ej);
-                            }
-                        }
-                    }
-                    
-                    errors = count_errors();
-                    rounds_without_improvement = 0;
-                    total_penalty_rounds = 0;
-                }
-                
-                // Arrêter si tous les restarts sont épuisés et toujours pas d'amélioration
-                if (rounds_without_improvement >= RESTART_THRESHOLD && restarts >= MAX_RESTARTS) {
-                    if (verbose) {
-                        std::cout << "  [WEIGHTED] Stopping: exhausted all " << MAX_RESTARTS << " restarts" << std::endl;
-                    }
-                    break;
-                }
-                
-                // Vérifier l'interruption
-                if (is_interrupted()) {
-                    if (verbose) {
-                        std::cout << "  [WEIGHTED] Stopping: interrupted (Ctrl+C)" << std::endl;
-                    }
-                    break;
-                }
-            }
+    long long total_flips = 0;
+    int total_smooth = 0, total_penalty = 0, total_double = 0;
+
+    while (iter < max_iterations && errors > 0 && !interrupted()) {
+        char type;
+        int a, b;
+        if (pick_good_flip(type, a, b)) {
+            if (type == 'A') flip_A(a, b);
+            else             flip_B(a, b);
+            total_flips++;
         } else {
-            // Effectuer le flip
-            if (flip_type == 'A') {
-                flip_A(idx1, idx2);
+            if (try_double_flip()) {
+                total_double++;
+                total_flips += 2;
             } else {
-                flip_B(idx1, idx2);
-            }
-            
-            errors = count_errors();
-            result.error_history.push_back(errors);
-            stagnation = 0;
-            
-            if (errors < best_errors) {
-                best_errors = errors;
-                A_best = A;
-                B_best = B;
-                rounds_without_improvement = 0;
-                
-                if (verbose && (iter % 1000 == 0 || errors == 0)) {
-                    std::cout << "  [WEIGHTED] Iter " << iter << ": " << errors 
-                              << " errors (penalty rounds: " << total_penalty_rounds << ")" << std::endl;
-                }
+                bool did_smooth = false;
+                update_weights(sp, h_inc, s_inc, did_smooth);
+                if (did_smooth) total_smooth++; else total_penalty++;
+                if (interrupted()) break;
+                force_flip_from_unsat();
+                total_flips++;
             }
         }
-        
+
+        errors = (int)(unsat_hard_cells.size() + unsat_soft_cells.size());
+        result.error_history.push_back(errors);
+
+        if (errors < best_errors) {
+            best_errors = errors;
+            A_best = A; B_best = B;
+            result.last_improvement_ms = elapsed();
+        }
         iter++;
     }
-    
+
     auto end_time = std::chrono::high_resolution_clock::now();
     result.total_time = std::chrono::duration<double, std::milli>(end_time - start_time).count();
     result.final_errors = best_errors;
-    result.iterations = iter;
+    result.iterations = (int)total_flips;
     result.A_solution = A_best;
     result.B_solution = B_best;
     result.success = (best_errors == 0);
-    result.stop_reason = (best_errors == 0) ? "zero_errors" :
-                         is_interrupted() ? "interrupted" :
-                         (restarts >= MAX_RESTARTS) ? "max_restarts" : "max_iterations";
-    
+    result.stop_reason = (best_errors == 0) ? "zero_errors"
+                       : interrupted() ? "interrupted"
+                       : "max_iterations";
+
     if (verbose) {
-        std::string stop_emoji = (result.stop_reason == "zero_errors") ? "OK" :
-                                 (result.stop_reason == "interrupted") ? "INT" : "REST";
-        std::cout << "  [WEIGHTED] Final: " << best_errors << " errors in " 
-                  << iter << " iterations, " << total_penalty_rounds << " penalty rounds, "
+        double sec = result.total_time / 1000.0;
+        double fps = (sec > 0.0) ? (double)total_flips / sec : 0.0;
+        std::cout << "  [WEIGHTED] Final: " << best_errors << " err in "
+                  << total_flips << " flips (" << iter << " iter), "
+                  << total_penalty << " penalty, " << total_smooth << " smooth, "
+                  << total_double << " double-flips, "
                   << std::fixed << std::setprecision(1) << result.total_time << " ms"
-                  << " (" << stop_emoji << " " << result.stop_reason << ")" << std::endl;
+                  << " (" << std::fixed << std::setprecision(0) << fps << " flips/sec)"
+                  << " (" << result.stop_reason << ")" << std::endl;
     }
-    
+
     return result;
 }
-

@@ -1,5 +1,9 @@
 # Build
 build/
+build_test/
+
+# Cluster (scripts SLURM Narval, resultats locaux, logs)
+cluster/
 
 # macOS
 .DS_Store
@@ -29,6 +33,8 @@ data/SimplExi.md
 data/SimplUni.md
 data/DBLP.csv
 data/test.csv
+data/data_result.md
+data/*.md
 
 # CSV en doublon a la racine de data/ (deja dans data/Real/)
 data/*.csv
@@ -48,3 +54,6 @@ data/Real/SimplUni/
 *.a
 *.so
 *.dylib
+
+# Solveurs alternatifs telecharges localement (non utilises)
+third_party/loandra/

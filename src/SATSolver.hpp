@@ -3,7 +3,7 @@
 #include <map>
 #include <cstdint>
 
-// Forward declaration - IPAMIR C API (défini dans ipamir.h)
+// Forward declaration - IPAMIR C API (defined in ipamir.h)
 extern "C" {
     void* ipamir_init();
     void ipamir_release(void* solver);
@@ -15,7 +15,7 @@ extern "C" {
     int32_t ipamir_val_lit(void* solver, int32_t lit);
 }
 
-// Codes de retour IPAMIR
+// IPAMIR return codes
 constexpr int IPAMIR_RESULT_INTERRUPTED = 0;
 constexpr int IPAMIR_RESULT_SAT = 10;
 constexpr int IPAMIR_RESULT_UNSAT = 20;
@@ -24,15 +24,11 @@ constexpr int IPAMIR_RESULT_ERROR = 40;
 
 /**
  * @class SATSolver
- * @brief Wrapper pour le solveur MaxSAT EvalMaxSAT2022 via l'API IPAMIR
- * 
- * Cette classe encapsule EvalMaxSAT2022 via l'interface IPAMIR pour fournir
- * une interface simplifiée pour résoudre des problèmes MaxSAT pondérés.
- * 
- * L'API IPAMIR supporte nativement:
- * - Les assumptions (ipamir_assume)
- * - L'ajout incrémental de clauses
- * - Les clauses soft pondérées
+ * @brief Wrapper for the EvalMaxSAT2022 MaxSAT solver via the IPAMIR API
+ *
+ * Provides a simplified interface for solving weighted MaxSAT problems.
+ * The IPAMIR API natively supports assumptions, incremental clause addition,
+ * and weighted soft clauses.
  */
 class SATSolver {
 private:
@@ -40,130 +36,83 @@ private:
 
 public:
     int num_vars;
-    std::vector<std::vector<int>> clauses;  // Pour debug/tracking
     std::vector<bool> model;
-    
+
     SATSolver();
     ~SATSolver();
-    
-    /**
-     * @brief Crée une nouvelle variable SAT
-     * @return L'identifiant de la nouvelle variable (1-indexed)
-     */
+
+    /** @brief Creates a new SAT variable. @return The variable identifier (1-indexed). */
     int new_var();
-    
-    /**
-     * @brief Ajoute une clause dure (hard clause)
-     * @param clause Vecteur de littéraux
-     */
+
+    /** @brief Adds a hard clause. @param clause Vector of literals. */
     void add_clause(const std::vector<int>& clause);
-    
+
     /**
-     * @brief Ajoute une clause souple (soft clause) avec un poids
-     * @param clause Vecteur de littéraux
-     * @param weight Poids de la clause
-     * @return L'identifiant de la variable de relaxation (pour clauses non-unitaires)
-     * 
-     * Note: Pour les clauses unitaires, utilise directement ipamir_add_soft_lit.
-     * Pour les clauses non-unitaires, introduit une variable auxiliaire.
+     * @brief Adds a weighted soft clause.
+     * @param clause Vector of literals.
+     * @param weight Clause weight.
+     * @return The relaxation variable identifier (for non-unit clauses).
+     *
+     * For unit clauses, uses ipamir_add_soft_lit directly.
+     * For non-unit clauses, introduces an auxiliary variable.
      */
     int add_soft_clause(const std::vector<int>& clause, long long weight = 1);
-    
-    /**
-     * @brief Résout le problème MaxSAT
-     * @return true si une solution a été trouvée (SAT ou OPTIMAL)
-     */
+
+    /** @brief Solves the MaxSAT problem. @return true if a solution was found (SAT or OPTIMAL). */
     bool solve();
-    
+
     /**
-     * @brief Résout le problème MaxSAT avec des assumptions natives
-     * @param assumptions Vecteur de littéraux à assumer (positif = vrai, négatif = faux)
-     * @return true si une solution a été trouvée
-     * 
-     * Note: Les assumptions sont automatiquement effacées après solve().
-     * C'est la vraie implémentation incrémentale via IPAMIR.
+     * @brief Solves the MaxSAT problem with native assumptions.
+     * @param assumptions Vector of literals to assume (positive = true, negative = false).
+     * @return true if a solution was found.
+     *
+     * Assumptions are automatically cleared after solve().
      */
     bool solve_with_assumptions(const std::vector<int>& assumptions);
-    
-    /**
-     * @brief Ajoute une assumption pour le prochain appel à solve()
-     * @param lit Le littéral à assumer (positif = vrai, négatif = faux)
-     * 
-     * Les assumptions sont effacées après chaque appel à solve().
-     */
+
+    /** @brief Adds an assumption for the next solve() call. Cleared after each solve(). */
     void assume(int lit);
-    
+
     /**
-     * @brief Ajoute une clause de contrôle conditionnelle (pour LNS incrémental)
-     * @param ctrl_var Variable de contrôle (si vraie, la clause target doit être satisfaite)
-     * @param target_lit Littéral cible à forcer quand ctrl_var est vrai
-     * 
-     * Ajoute: ctrl_var → target_lit (équivalent à: ¬ctrl_var ∨ target_lit)
+     * @brief Adds a conditional control clause (for incremental LNS).
+     * Adds: ctrl_var -> target_lit (equivalent to: -ctrl_var | target_lit)
      */
     void add_control_clause(int ctrl_var, int target_lit);
-    
-    /**
-     * @brief Obtient la valeur d'un littéral dans le modèle
-     * @param lit Le littéral (positif ou négatif)
-     * @return La valeur booléenne du littéral
-     */
+
+    /** @brief Gets the value of a literal in the current model. */
     bool getValue(int lit);
-    
-    /**
-     * @brief Obtient le coût de la solution (somme des poids des soft clauses non satisfaites)
-     * @return Le coût
-     */
+
+    /** @brief Gets the solution cost (sum of weights of unsatisfied soft clauses). */
     long long get_cost();
-    
-    /**
-     * @brief Active le mode incrémental (no-op avec IPAMIR, toujours incrémental)
-     * @param value Ignoré - IPAMIR est toujours incrémental
-     */
-    void setIncremental(bool value = true);
-    
-    /**
-     * @brief Réinitialise le solveur (release + init)
-     */
+
+    /** @brief Resets the solver (release + init). */
     void reset();
-    
+
     /**
-     * @brief Ajoute une clause conditionnelle (avec sélecteur)
-     * @param selector Variable de sélection (si vraie, la clause doit être satisfaite)
-     * @param clause Clause à ajouter conditionnellement
-     * 
-     * Ajoute: selector → (clause)  ≡  ¬selector ∨ clause
+     * @brief Adds a conditional clause (with selector).
+     * Adds: selector -> (clause), i.e., -selector | l1 | l2 | ... | ln
      */
     void add_conditional_clause(int selector, const std::vector<int>& clause);
-    
+
     /**
-     * @brief Ajoute une contrainte unitaire conditionnelle
-     * @param selector Variable de sélection
-     * @param lit Littéral à forcer quand selector est vrai
-     * 
-     * Ajoute: selector → lit  ≡  ¬selector ∨ lit
+     * @brief Adds a conditional unit constraint.
+     * Adds: selector -> lit, i.e., -selector | lit
      */
     void add_conditional_unit(int selector, int lit);
 };
 
 /**
  * @class VariableManager
- * @brief Gestionnaire de variables SAT pour matrices indexées par (i, j)
- * 
- * Permet de créer et récupérer des variables SAT associées à des positions matricielles.
+ * @brief Manages SAT variables indexed by matrix positions (i, j).
  */
 class VariableManager {
 public:
     std::map<std::pair<int,int>, int> vars;
     SATSolver& solver;
-    
+
     VariableManager(SATSolver& s) : solver(s) {}
-    
-    /**
-     * @brief Obtient ou crée une variable pour la position (i, j)
-     * @param i Index de ligne
-     * @param j Index de colonne
-     * @return L'identifiant de la variable
-     */
+
+    /** @brief Gets or creates a variable for position (i, j). */
     int get(int i, int j) {
         auto key = std::make_pair(i, j);
         if (vars.find(key) == vars.end()) {
@@ -173,6 +122,6 @@ public:
     }
 
     void reset() {
-        vars.clear(); 
+        vars.clear();
     }
 };
