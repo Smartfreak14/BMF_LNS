@@ -291,7 +291,7 @@ CSVTestResult test_opt4_wls(const std::string& csv_file, int k_value, double tim
             phase1_done = true;
         }
 
-        A_cur = wr.A_solution; B_cur = wr.B_solution;
+        A_cur = std::move(wr.A_solution); B_cur = std::move(wr.B_solution);
         if (best == 0 || is_interrupted() || remaining() < 1000) break;
 
         auto [rows, cols] = select_neighborhood_topk_random(M, A_cur, B_cur, nh, rng);

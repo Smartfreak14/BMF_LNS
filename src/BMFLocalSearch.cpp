@@ -201,7 +201,9 @@ void BMFLocalSearch::flip_A(int i, int l) {
 
     
     {
-        std::vector<int> snap = zero_cover_in_row[i].as_vector();
+        // cols_B[l]/zero_cover_in_row[i] ne sont pas modifies dans cette boucle:
+        // reference (pas de copie).
+        const std::vector<int>& snap = zero_cover_in_row[i].as_vector();
         for (int j : snap) {
             if (B(l, j) == 1) continue;
             int m_ij = M(i, j);
@@ -215,7 +217,8 @@ void BMFLocalSearch::flip_A(int i, int l) {
         }
     }
 
-    std::vector<int> snap_cols_B_l = cols_B[l].as_vector();
+    // cols_B[l] n'est pas modifie par flip_A: reference (pas de copie).
+    const std::vector<int>& snap_cols_B_l = cols_B[l].as_vector();
 
     for (int j : snap_cols_B_l) {
         int idx_ij = i * n + j;
@@ -224,7 +227,7 @@ void BMFLocalSearch::flip_A(int i, int l) {
         int m_ij = M(i, j);
         double w = weight_flat[idx_ij];
 
-        const auto rB = rows_B[j].as_vector();
+        const auto& rB = rows_B[j].as_vector();
         for (int l2 : rB) {
             if (l2 == l) continue;
             int sign2 = (A(i, l2) == 1) ? -1 : +1;
@@ -237,7 +240,7 @@ void BMFLocalSearch::flip_A(int i, int l) {
             }
         }
 
-        const auto cA = cols_A[i].as_vector();
+        const auto& cA = cols_A[i].as_vector();
         for (int l2 : cA) {
             if (l2 == l) continue;
             int sign2 = (B(l2, j) == 1) ? -1 : +1;
@@ -250,7 +253,7 @@ void BMFLocalSearch::flip_A(int i, int l) {
             }
         }
 
-        
+
         double oc_lj = old_a    ? score_contrib(m_ij, old_nb, -1, w) : 0.0;
         double nc_lj = (!old_a) ? score_contrib(m_ij, new_nb, -1, w) : 0.0;
         double d_lj = nc_lj - oc_lj;
@@ -310,7 +313,8 @@ void BMFLocalSearch::flip_B(int l, int j) {
     int dir = old_b ? -1 : +1;
 
     {
-        std::vector<int> snap = zero_cover_in_col[j].as_vector();
+        // zero_cover_in_col[j] n'est pas modifie dans cette boucle: reference.
+        const std::vector<int>& snap = zero_cover_in_col[j].as_vector();
         for (int i : snap) {
             if (A(i, l) == 1) continue;
             int m_ij = M(i, j);
@@ -324,7 +328,8 @@ void BMFLocalSearch::flip_B(int l, int j) {
         }
     }
 
-    std::vector<int> snap_rows_A_l = rows_A[l].as_vector();
+    // rows_A[l] n'est pas modifie par flip_B: reference (pas de copie).
+    const std::vector<int>& snap_rows_A_l = rows_A[l].as_vector();
 
     for (int i : snap_rows_A_l) {
         int idx_ij = i * n + j;
@@ -333,7 +338,7 @@ void BMFLocalSearch::flip_B(int l, int j) {
         int m_ij = M(i, j);
         double w = weight_flat[idx_ij];
 
-        const auto cA = cols_A[i].as_vector();
+        const auto& cA = cols_A[i].as_vector();
         for (int l2 : cA) {
             if (l2 == l) continue;
             int sign2 = (B(l2, j) == 1) ? -1 : +1;
@@ -346,7 +351,7 @@ void BMFLocalSearch::flip_B(int l, int j) {
             }
         }
 
-        const auto rB = rows_B[j].as_vector();
+        const auto& rB = rows_B[j].as_vector();
         for (int l2 : rB) {
             if (l2 == l) continue;
             int sign2 = (A(i, l2) == 1) ? -1 : +1;
@@ -529,14 +534,16 @@ void BMFLocalSearch::update_weights(double sp, double h_inc, double s_inc, bool&
     }
 
     did_smooth = false;
+    // apply_weight_change ne change pas nbcover, donc les ensembles unsat_*
+    // restent inchanges pendant l'iteration: reference (pas de copie).
     if (!unsat_hard_cells.empty()) {
-        std::vector<int> snap = unsat_hard_cells.as_vector();
+        const std::vector<int>& snap = unsat_hard_cells.as_vector();
         for (int idx : snap) {
             int i = idx / n, j = idx % n;
             apply_weight_change(i, j, h_inc);
         }
     } else {
-        std::vector<int> snap = unsat_soft_cells.as_vector();
+        const std::vector<int>& snap = unsat_soft_cells.as_vector();
         for (int idx : snap) {
             int i = idx / n, j = idx % n;
             apply_weight_change(i, j, s_inc);
@@ -652,8 +659,8 @@ LocalSearchResult BMFLocalSearch::solve_weighted(int max_iterations,
     result.total_time = std::chrono::duration<double, std::milli>(end_time - start_time).count();
     result.final_errors = best_errors;
     result.iterations = (int)total_flips;
-    result.A_solution = A_best;
-    result.B_solution = B_best;
+    result.A_solution = std::move(A_best);
+    result.B_solution = std::move(B_best);
     result.success = (best_errors == 0);
     result.stop_reason = (best_errors == 0) ? "zero_errors"
                        : interrupted() ? "interrupted"
