@@ -83,6 +83,29 @@ verif_errors
 - `wls_*` : débit cumulé de la WLS (utile pour diagnostiquer un goulot).
 - `verif_errors` : `-1` non vérifié, `0` `verif.py` d'accord, `>0` désaccord.
 
+## Baseline MaxSAT anytime
+
+Compare opt4-wls contre des solveurs MaxSAT anytime généraux sur la même
+formule (EvalMaxSAT, NuWLS, SATLike-c, loandra).
+
+```bash
+# 1. Compiler les solveurs baseline (une fois)
+bash scripts/install_baseline_solvers.sh
+
+# 2. Dumper la formule Partial MaxSAT d'un dataset
+./rbac_main --dump-wcnf data/Real/SimplUni/mushroom.csv 51 /tmp/mushroom.wcnf
+
+# 3. Lancer les solveurs baseline avec timeout 60s
+bash scripts/bench_maxsat.sh /tmp/mushroom.wcnf 60 /tmp/mushroom_bench.csv
+
+# 4. Campagne sur toute une liste
+bash scripts/bench_maxsat_batch.sh cluster/datasets.csv Real/SimplUni 60 /tmp/bench_out
+```
+
+Encodage : `M=1` → clause soft `∃l : A[i,l] ∧ B[l,j]` via Tseitin sur
+`p_{i,l,j}` ; `M=0` → hards `¬A[i,l] ∨ ¬B[l,j]` pour chaque `l`. Cellules
+`M=-1` ignorées. Chaque solveur peut être remplacé via `EVALMAXSAT_BIN`,
+`NUWLS_BIN`, `SATLIKE_BIN`, `LOANDRA_BIN`.
 
 ## Arborescence
 
@@ -96,6 +119,10 @@ src/
   Matrix.hpp                Matrice binaire
   CSVMatrixLoader.hpp       Chargement CSV
   verif.py                  Verification Python (A * B vs M)
+scripts/
+  bench_maxsat.sh           Lance les baselines MaxSAT sur un WCNF
+  bench_maxsat_batch.sh     Meme chose sur une liste de datasets
+  install_baseline_solvers.sh Compile NuWLS + SATLike-c + loandra
 data/
   Real/                     Datasets reels (SimplUni, SimplExi, ...)
   Synthetic/                Datasets synthetiques

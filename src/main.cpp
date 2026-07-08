@@ -412,8 +412,10 @@ void print_usage() {
     std::cout
         << "Usage:\n"
         << "  ./rbac_main <file.csv> <k> [timeout_seconds] [--csv-out <path>]\n"
+        << "  ./rbac_main --dump-wcnf <file.csv> <k> <output.wcnf>\n"
         << "  ./rbac_main --help\n\n"
-        << "opt4-wls = GI + (WLS + LNS partial)*. timeout=0 : pas de timeout, Ctrl+C stoppe.\n";
+        << "opt4-wls = GI + (WLS + LNS partial)*. timeout=0 : pas de timeout, Ctrl+C stoppe.\n"
+        << "--dump-wcnf : ecrit la formule Partial MaxSAT complete au format WCNF v1.\n";
 }
 
 } // anonymous namespace
@@ -422,6 +424,19 @@ int main(int argc, char* argv[]) {
     if (argc < 2 || std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h") {
         print_usage();
         return (argc < 2) ? 1 : 0;
+    }
+
+    // --dump-wcnf <file.csv> <k> <output.wcnf>
+    if (std::string(argv[1]) == "--dump-wcnf") {
+        if (argc < 5) {
+            std::cerr << "Usage: ./rbac_main --dump-wcnf <file.csv> <k> <output.wcnf>\n";
+            return 1;
+        }
+        auto [M, k_out, filename] = load_csv_matrix(argv[2], std::stoi(argv[3]));
+        if (M.rows == 0) return 1;
+        BMF bmf(k_out, M);
+        bmf.dump_wcnf(argv[4]);
+        return 0;
     }
 
     std::string csv_out;
