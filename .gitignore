@@ -2,8 +2,15 @@
 build/
 build_test/
 
-# Cluster (scripts SLURM Narval, resultats locaux, logs)
-cluster/
+# Cluster : logs et resultats locaux (les scripts sont suivis)
+cluster/logs/
+cluster/*.log
+cluster/results/
+cluster/results_*/
+
+# Resultats rapatries du cluster
+/results/
+/results.zip
 
 # macOS
 .DS_Store

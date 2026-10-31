@@ -1,11 +1,4 @@
 #!/bin/bash
-# Compile les solveurs baseline MaxSAT anytime dans third_party/.
-# EvalMaxSAT2022 est deja compile via setup_env.sh.
-#
-# Cible principale : cluster Narval (Linux + gcc + libs statiques).
-# Sur Mac, `-static` echoue souvent : on l'enleve, mais des solveurs peuvent
-# quand meme rater. Pour un vrai benchmark, faire tourner ce script sur le
-# cluster, pas sur Mac.
 
 set -uo pipefail
 
@@ -74,18 +67,45 @@ echo ""
 
 # =====================================================================
 echo ">>> SATLike-c (Lei, Cai, MaxSAT Eval 2021)"
-# Pas d'URL canonique connue ; le code est distribue sur la page MaxSAT
-# Evaluation 2021. Pour l'installer manuellement :
 if [ ! -x "$THIRD_PARTY/SATLike-c/satlike_c" ]; then
-    cat <<'EOF'
-  [SATLike-c] installation manuelle requise :
-    1. Telecharger la soumission SATLike-c depuis MaxSAT Evaluation 2021
-       https://maxsat-evaluations.github.io/2021/mse21-solver-src/incomplete/SATLike-c.zip
-       (URL a verifier, peut avoir change)
-    2. Extraire dans third_party/SATLike-c/
-    3. cd third_party/SATLike-c && make
-    4. Le binaire attendu est satlike_c
-EOF
+    # URL officielle MaxSAT Eval 2021 (submission SATLike-c).
+    ZIP_URL="https://maxsat-evaluations.github.io/2021/mse21-solver-src/incomplete/SATLike-c.zip"
+    ALT_URL="https://github.com/shaowei-cai-group/SATLike-c/archive/refs/heads/main.zip"
+
+    if [ ! -d "$THIRD_PARTY/SATLike-c" ]; then
+        mkdir -p "$THIRD_PARTY/SATLike-c"
+        cd "$THIRD_PARTY/SATLike-c"
+        # Essayer archive MaxSAT Eval puis miroir GitHub.
+        if curl -sSfL -o SATLike-c.zip "$ZIP_URL" 2>/dev/null; then
+            unzip -q SATLike-c.zip && rm -f SATLike-c.zip
+        elif curl -sSfL -o SATLike-c.zip "$ALT_URL" 2>/dev/null; then
+            unzip -q SATLike-c.zip && rm -f SATLike-c.zip
+        else
+            echo "  [SATLike-c] echec du telechargement (URLs indisponibles)"
+            echo "  Installer manuellement, poser sources dans third_party/SATLike-c/, relancer."
+            cd "$THIRD_PARTY"
+        fi
+        cd "$THIRD_PARTY"
+    fi
+
+    # Chercher un Makefile a max 3 niveaux et compiler.
+    MF=$(find "$THIRD_PARTY/SATLike-c" -maxdepth 3 -iname "Makefile" -not -path "*/.*" -print -quit 2>/dev/null || true)
+    if [ -n "$MF" ]; then
+        BUILD_DIR=$(dirname "$MF")
+        if [ $IS_MAC -eq 1 ]; then
+            sed -i.bak 's/-static//' "$MF"
+        fi
+        (cd "$BUILD_DIR" && make -j4) || echo "  [SATLike-c] compilation echouee"
+        # Chercher le binaire et symlink en satlike_c
+        BIN=$(find "$THIRD_PARTY/SATLike-c" -maxdepth 3 -type f -executable \
+              \( -name "satlike*" -o -name "SATLike*" \) 2>/dev/null | head -1)
+        if [ -n "$BIN" ] && [ -x "$BIN" ]; then
+            ln -sf "$BIN" "$THIRD_PARTY/SATLike-c/satlike_c"
+            echo "  [SATLike-c] OK -> $THIRD_PARTY/SATLike-c/satlike_c"
+        fi
+    fi
+else
+    echo "  [SATLike-c] deja compile, skip"
 fi
 echo ""
 

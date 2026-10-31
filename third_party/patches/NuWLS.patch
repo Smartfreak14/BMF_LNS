@@ -1,0 +1,103 @@
+diff --git a/NuWLS-source-code/Makefile b/NuWLS-source-code/Makefile
+index 49bc5a5..b1dc14a 100644
+--- a/NuWLS-source-code/Makefile
++++ b/NuWLS-source-code/Makefile
+@@ -1,3 +1,3 @@
+ nuwls: basis_pms.h build.h pms.h heuristic.h pms.cpp	
+-	g++  pms.cpp -O3 -o nuwls -static
++	g++  pms.cpp -O3 -o nuwls 
+ 	rm -f *~
+diff --git a/NuWLS-source-code/basis_pms.h b/NuWLS-source-code/basis_pms.h
+index c9a2382..e60a36d 100644
+--- a/NuWLS-source-code/basis_pms.h
++++ b/NuWLS-source-code/basis_pms.h
+@@ -164,6 +164,10 @@ class ISDist
+ 	int coe_soft_clause_weight;
+ 	//long long *soft_clause_weight_upper_bound;
+ 
++	//initial assignment read with -init (used for the first try only)
++	vector<int> init_assignment;
++	bool read_init_assignment(const char *filename);
++
+ 	//function used in algorithm
+ 	void build_neighbor_relation();
+ 	void allocate_memory();
+diff --git a/NuWLS-source-code/build.h b/NuWLS-source-code/build.h
+index f0556b0..d3e1ad0 100644
+--- a/NuWLS-source-code/build.h
++++ b/NuWLS-source-code/build.h
+@@ -92,7 +92,50 @@ bool ISDist::parse_parameters2(int argc, char **argv)
+                 return false;
+             sscanf(argv[i], "%d", &coe_soft_clause_weight);
+         }
++        else if (0 == strcmp(argv[i], "-init"))
++        {
++            i++;
++            if (i >= argc)
++                return false;
++            if (!read_init_assignment(argv[i]))
++                exit(-1);
++        }
++    }
++    return true;
++}
++
++// Literals "v" (optional prefix) separated by blanks; lines starting with 'c' are skipped.
++// Variables not listed keep -1 and are drawn at random by init().
++bool ISDist::read_init_assignment(const char *filename)
++{
++    ifstream infile(filename);
++    if (!infile)
++    {
++        cout << "c the init file " << filename << " is invalid." << endl;
++        return false;
++    }
++    init_assignment.assign(num_vars + 1, -1);
++    int assigned = 0;
++    string line, tok;
++    while (getline(infile, line))
++    {
++        if (line.empty() || line[0] == 'c')
++            continue;
++        istringstream iss(line);
++        while (iss >> tok)
++        {
++            if (tok == "v")
++                continue;
++            int l = atoi(tok.c_str());
++            int v = abs(l);
++            if (v == 0 || v > num_vars)
++                continue;
++            if (init_assignment[v] == -1)
++                assigned++;
++            init_assignment[v] = (l > 0) ? 1 : 0;
++        }
+     }
++    cout << "c init assignment: " << assigned << "/" << num_vars << " vars from " << filename << endl;
+     return true;
+ }
+ 
+diff --git a/NuWLS-source-code/heuristic.h b/NuWLS-source-code/heuristic.h
+index 09c0013..f4d36c4 100644
+--- a/NuWLS-source-code/heuristic.h
++++ b/NuWLS-source-code/heuristic.h
+@@ -298,9 +298,16 @@ void ISDist::local_search_with_decimation(char *inputfile)
+     opt_unsat_weight = __LONG_LONG_MAX__;
+     for (tries = 1; tries < max_tries; ++tries)
+     {
+-        deci.init(local_opt_soln, best_soln, unit_clause, unit_clause_count, clause_lit_count);
+-        deci.unit_prosess();
+-        init(deci.fix);
++        if (tries == 1 && !init_assignment.empty())
++        {
++            init(init_assignment);
++        }
++        else
++        {
++            deci.init(local_opt_soln, best_soln, unit_clause, unit_clause_count, clause_lit_count);
++            deci.unit_prosess();
++            init(deci.fix);
++        }
+ 
+         long long local_opt = __LONG_LONG_MAX__;
+         max_flips = max_non_improve_flip;

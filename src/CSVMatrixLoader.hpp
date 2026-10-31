@@ -57,6 +57,8 @@ public:
                     }
                 }
             }
+            // std::getline yields no token after a trailing ',': that last cell is missing too.
+            if (!line.empty() && line.back() == ',') row.push_back(-1);
 
             if (!row.empty()) {
                 data.push_back(row);

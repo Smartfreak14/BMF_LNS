@@ -1,0 +1,4 @@
+filename,k,timeout_per_option_seconds
+# Matrices de datasets_real.csv dont les 3 executions de boolmaxls_raw_k_final ont ete tuees
+# (appel LNS sans fin), relancees par boolmaxls_raw_k_final_redo.
+iris.csv,121,1800

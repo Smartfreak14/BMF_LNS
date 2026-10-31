@@ -1,0 +1,29 @@
+filename,k,timeout_per_option_seconds
+# Table 4 du papier : comparaison Kolomvakis et al. 2025.
+# Format : filename,r,timeout (r = rang cible, on lance 30s ET 5min pour chaque r).
+# Les 4 premiers datasets sont sans valeurs manquantes, les 4 suivants en ont.
+# k dans ce fichier represente le RANG r ∈ {2, 5, 10}.
+zoo.csv,2,300
+zoo.csv,5,300
+zoo.csv,10,300
+heart.csv,2,300
+heart.csv,5,300
+heart.csv,10,300
+lymphography.csv,2,300
+lymphography.csv,5,300
+lymphography.csv,10,300
+apj.csv,2,300
+apj.csv,5,300
+apj.csv,10,300
+tumor.csv,2,300
+tumor.csv,5,300
+tumor.csv,10,300
+hepatits.csv,2,300
+hepatits.csv,5,300
+hepatits.csv,10,300
+audio.csv,2,300
+audio.csv,5,300
+audio.csv,10,300
+votes.csv,2,300
+votes.csv,5,300
+votes.csv,10,300

@@ -1,0 +1,8 @@
+filename,k,timeout_per_option_seconds
+# Matrices de datasets_real_khalf.csv dont les 3 executions de boolmaxls_raw_khalf_final ont ete tuees
+# (appel LNS sans fin), relancees par boolmaxls_raw_khalf_final_redo.
+car.csv,12,1800
+chess_krvskp.csv,19,1800
+iris.csv,60,1800
+phishing.csv,13,1800
+tictactoe.csv,14,1800

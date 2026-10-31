@@ -1,0 +1,48 @@
+\begin{table*}[h]
+\centering
+\setlength{\tabcolsep}{0.2pt}\renewcommand{\arraystretch}{0.8}
+\scriptsize
+\begin{tabular}{l rrr rrr r rrrr rrrr}
+\toprule
+ & \multicolumn{3}{c}{$\text{Simpli}^{\forall}$: $k$ (time)} & \multicolumn{3}{c}{$\text{Simpli}^{\exists}_{0}$: $k$ (time)} & & \multicolumn{4}{c}{raw, rank $k$} & \multicolumn{4}{c}{raw, rank $k/2$} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){9-12}\cmidrule(lr){13-16}
+\textsc{Dataset} & Ours & NuWLS & Opti & Ours & NuWLS & Opti & $k$ & Ours & NuWLS & Kol. & ASSO & Ours & NuWLS & Kol. & ASSO \\
+\midrule
+Advertisement & \textbf{711 (5.1s)} & -- & 749 (3h)${}^{\dagger}$ & 704 (5.4s) & -- & \textbf{703 (3h)}${}^{\dagger}$ & 794 & \textbf{0} & -- & -- & -- & \textbf{7553} & -- & -- & 41223 \\
+Americas\_small & 189 (11.4s) & -- & \textbf{188 (3h)}${}^{\dagger}$ & \textbf{187 (1.6s)} & -- & 187 (1h) & 216 & \textbf{268} & -- & -- & -- & \textbf{3383} & -- & -- & 98608 \\
+Apj & \textbf{453 (7.6m)} & -- & 453 (3h)${}^{\dagger}$ & \textbf{453 (1.7s)} & -- & 453 (2h) & 474 & \textbf{146} & -- & -- & -- & \textbf{1128} & -- & 6841 & 6650 \\
+Audio & \textbf{200 (17ms)} & 200 (58s) & 200 (1m) & \textbf{200 (17ms)} & 200 (50s) & 200 (1m) & 200 & \textbf{41} & 154 & -- & 2094 & \textbf{183} & 386 & -- & 2179 \\
+Autism & \textbf{154 (28ms)} & -- & 154 (3m) & \textbf{154 (24ms)} & -- & 154 (1m) & 154 & \textbf{0} & 356 & -- & 5983 & \textbf{210} & 1085 & -- & 6008 \\
+Balance & \textbf{23 (2.8ms)} & 23 (143s) & 23 (1s) & \textbf{23 (2.8ms)} & 23 (131s) & 23 (1s) & 23 & \textbf{0} & \textbf{0} & \textbf{0} & \textbf{0} & \textbf{1424} & 1492 & -- & \textbf{1424} \\
+Breast & \textbf{90 (10ms)} & -- & 90 (1m) & \textbf{90 (10ms)} & -- & 90 (30s) & 90 & \textbf{0} & 998 & -- & 2598 & \textbf{815} & 1552 & -- & 3198 \\
+Car & \textbf{25 (6.6ms)} & -- & 25 (3s) & \textbf{25 (6.4ms)} & -- & 25 (3s) & 25 & \textbf{0} & 254 & -- & 1529 & \textbf{4656} & 5372 & -- & 5136 \\
+Chess & \textbf{38 (14ms)} & 38 (10s) & 38 (20s) & \textbf{38 (12ms)} & 38 (34s) & 38 (10s) & 38 & \textbf{0} & \textbf{0} & -- & 13212 & \textbf{3469} & 7034 & -- & 13407 \\
+Cmc & \textbf{71 (18ms)} & -- & 71 (40s) & \textbf{71 (16ms)} & -- & 71 (20s) & 71 & \textbf{0} & 1043 & -- & 3686 & \textbf{1163} & 3053 & -- & 4549 \\
+Customer & \textbf{276 (1.4s)} & -- & 277 (2h) & \textbf{276 (1.4s)} & -- & 276 (1h) & 282 & \textbf{0} & 2869 & -- & 43528 & \textbf{1164} & -- & -- & 42838 \\
+Dermatology & \textbf{184 (2.2m)} & -- & 184 (17m) & \textbf{191 (21ms)} & -- & 192 (6m) & 189 & \textbf{5} & 849 & -- & 11205 & \textbf{820} & 2245 & -- & 11253 \\
+Dna & \textbf{368 (1.0s)} & -- & 373 (3h)${}^{\dagger}$ & \textbf{367 (1.2s)} & -- & 367 (1h) & 497 & \textbf{0} & -- & -- & 19810 & \textbf{857} & -- & -- & 17425 \\
+Firewall & \textbf{64 (43ms)} & 64 (20s) & 64 (1m) & \textbf{64 (14.1s)} & 65 (21s) & 65 (30s) & 64 & \textbf{0} & 21 & -- & 24128 & 1153 & \textbf{100} & -- & 24128 \\
+Flare & \textbf{42 (6.3ms)} & -- & 42 (14s) & \textbf{42 (5.6ms)} & 42 (4.9s) & 42 (4s) & 42 & \textbf{0} & 14 & -- & 6516 & \textbf{306} & 486 & -- & 7100 \\
+Heart & -- & -- & \textbf{270 (90m)} & \textbf{270 (35ms)} & 270 (50s) & 270 (2m) & 270 & \textbf{89} & 426 & -- & 2849 & \textbf{408} & 774 & -- & 2698 \\
+Hepatits & -- & -- & \textbf{154 (7m)} & \textbf{154 (13ms)} & 154 (28s) & 154 (20s) & 154 & \textbf{31} & 245 & -- & 1035 & \textbf{349} & 518 & -- & 1148 \\
+Iris & \textbf{121 (4.9ms)} & -- & 122 (10s) & \textbf{121 (5.1ms)} & -- & 122 (20s) & 121 & 1 & \textbf{0} & \textbf{0} & 470 & 137 & 134 & \textbf{133} & 500 \\
+Lymphography & \textbf{53 (3.2ms)} & -- & 54 (6s) & \textbf{53 (2.6ms)} & 54 (3.9s) & 54 (3s) & 54 & \textbf{0} & 5 & 1 & 838 & 280 & 421 & \textbf{250} & 882 \\
+Mushroom & \textbf{51 (50ms)} & -- & 51 (3m) & \textbf{51 (50ms)} & 51 (130s) & 51 (1m) & 51 & \textbf{0} & 6888 & -- & 82024 & \textbf{22402} & 36446 & -- & 82024 \\
+Nursery & \textbf{30 (52ms)} & -- & 30 (40s) & \textbf{30 (50ms)} & -- & 30 (40s) & 30 & \textbf{0} & 2 & -- & 21222 & \textbf{39210} & 56010 & -- & 42450 \\
+Paleo & \textbf{139 (15ms)} & -- & 139 (2m) & \textbf{139 (14ms)} & 139 (95s) & 139 (30s) & 139 & \textbf{0} & 671 & -- & 218 & \textbf{969} & 1759 & -- & 1128 \\
+Phishing & \textbf{26 (6.0ms)} & -- & 26 (5s) & \textbf{26 (5.5ms)} & 26 (1.3s) & 26 (5s) & 26 & \textbf{0} & 1760 & -- & 959 & \textbf{3272} & 4069 & -- & 3810 \\
+Soybean & 86 (11ms) & -- & \textbf{85 (1m)} & \textbf{88 (6.8ms)} & -- & 88 (1m) & 84 & \textbf{22} & 65$^{\ast}$ & -- & 4436 & \textbf{1055} & 1527 & -- & 4486 \\
+StudentPerf. & \textbf{176 (22ms)} & -- & 176 (6m) & \textbf{176 (23ms)} & -- & 176 (4m) & 176 & \textbf{0} & 1651 & -- & 8563 & \textbf{980} & 3607 & -- & 8563 \\
+Thoracic & \textbf{305 (74ms)} & -- & 306 (20m) & \textbf{304 (72ms)} & -- & 305 (20m) & 304 & \textbf{0} & 409 & -- & 3049 & \textbf{274} & -- & -- & 2761 \\
+Tictactoe & \textbf{28 (18ms)} & -- & 28 (3s) & \textbf{28 (5.2ms)} & -- & 28 (3s) & 28 & \textbf{0} & 160 & -- & \textbf{0} & \textbf{3632} & 4388 & -- & \textbf{3632} \\
+Tumor & \textbf{44 (3.2ms)} & -- & 44 (3s) & \textbf{44 (2.9ms)} & 44 (0.6s) & 44 (1s) & 44 & \textbf{0} & 5 & 11 & 1471 & \textbf{229} & 287 & \textbf{229} & 1492 \\
+Votes & \textbf{17 (2.2ms)} & 17 (0.2s) & 17 (1s) & \textbf{17 (1.9ms)} & 17 (0.1s) & 17 (1s) & 17 & \textbf{0} & 125 & \textbf{0} & 285 & \textbf{592} & 627 & -- & 594 \\
+Wine & \textbf{178 (53ms)} & 178 (395s) & 178 (2m) & \textbf{178 (53ms)} & 178 (296s) & 178 (2m) & 178 & \textbf{0} & 866 & -- & 2055 & \textbf{1191} & -- & -- & 1772 \\
+Zoo & \textbf{25 (1.5ms)} & 25 (81ms) & 25 (1s) & \textbf{25 (1.6ms)} & 25 (63ms) & 25 (1s) & 25 & \textbf{0} & \textbf{0} & \textbf{0} & 209 & \textbf{68} & \textbf{68} & -- & 209 \\
+\bottomrule
+\end{tabular}
+\caption{\textbf{Updated} exact factorization (left) and reconstruction error (right) on the 31 benchmarks, after the code correction. \emph{Ours} = \ourmethod{}, \emph{NuWLS} = NuWLS-c, \emph{Opti} = OptiBlock, \emph{Kol.} = \citet{kolomvakis2025algorithms}. Only \emph{Ours} was re-run.
+\textbf{Left block:} rank and time to reach an exact factorization on the simplified matrices. ``--'' = no zero error within the 30-min limit for \ourmethod{}. ${}^{\dagger}$ OptiBlock best (not always zero) under 3h. Bold: smallest rank, ties broken by shortest time.
+\textbf{Right block:} median error on the raw matrices (multiple seeds) at rank $k$ and $\lfloor k/2 \rfloor$; ``--'' = timeout (30 min). Bold: best per setting, ties all bolded.}
+\label{tab:main-updated}
+\end{table*}

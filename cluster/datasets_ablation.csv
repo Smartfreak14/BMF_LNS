@@ -1,0 +1,37 @@
+filename,k,timeout_per_option_seconds
+# Ablation study : 31 datasets SimplUni (Real/SimplUni/) x 5 configurations.
+# k = valeurs SimplUni (identiques a datasets.csv, souvent < AV24).
+# Timeout PAR sous-methode : 1800s (30 min) uniforme.
+# Total par tache SLURM = 5 configs x NSEEDS x 1800s.
+# Avec NSEEDS=3 -> 5*3*1800 = 27000s = 7.5h (tient dans les 23h SLURM).
+advertisement.csv,711,1800
+americas_small.csv,187,1800
+apj.csv,454,1800
+audio.csv,200,1800
+autism.csv,154,1800
+balance.csv,23,1800
+breast.csv,90,1800
+car.csv,25,1800
+chess_krvskp.csv,38,1800
+cmc.csv,71,1800
+customer.csv,276,1800
+dermatology.csv,192,1800
+dna.csv,368,1800
+firewall.csv,64,1800
+flare.csv,42,1800
+heart.csv,270,1800
+hepatits.csv,154,1800
+iris.csv,121,1800
+lymphography.csv,53,1800
+mushroom.csv,51,1800
+nursery.csv,30,1800
+paleo.csv,139,1800
+phishing.csv,26,1800
+soybean.csv,86,1800
+studentPerformance.csv,176,1800
+ThoraricSurgery.csv,305,1800
+tictactoe.csv,28,1800
+tumor.csv,44,1800
+votes.csv,17,1800
+wine.csv,178,1800
+zoo.csv,25,1800

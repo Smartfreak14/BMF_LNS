@@ -1,0 +1,15 @@
+filename,k,timeout_per_option_seconds
+# Les 12 instances synthetiques A* x B* (data/Synthetic/, 1000 x 500, protocole d'Avellaneda 2024) :
+# densite d_<d>, rang k_<k> de la factorisation exacte construite.
+d_0.1_k_20.csv,20,1800
+d_0.1_k_30.csv,30,1800
+d_0.1_k_40.csv,40,1800
+d_0.2_k_20.csv,20,1800
+d_0.2_k_30.csv,30,1800
+d_0.2_k_40.csv,40,1800
+d_0.3_k_20.csv,20,1800
+d_0.3_k_30.csv,30,1800
+d_0.3_k_40.csv,40,1800
+d_0.4_k_20.csv,20,1800
+d_0.4_k_30.csv,30,1800
+d_0.4_k_40.csv,40,1800

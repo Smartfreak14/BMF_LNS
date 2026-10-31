@@ -1,0 +1,6 @@
+filename,k,timeout_per_option_seconds
+# Simpli∀ (Real/SimplUni/) aux rangs de l'ancien tableau (table_main_article.tex, colonne Ours)
+# absents de datasets.csv. Le tableau garde le plus petit rang atteint des deux campagnes.
+americas_small.csv,189,1800
+apj.csv,453,1800
+dermatology.csv,184,1800

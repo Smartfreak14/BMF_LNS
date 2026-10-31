@@ -1,0 +1,5 @@
+filename,k,timeout_per_option_seconds
+# Brutes a floor(k/2) (k de datasets_real_khalf.csv) dont l'encodage depasse MAX_CLAUSES (2e7)
+# mais pas MAX_CLAUSES_LARGE (6e7) : 20,7 et 25,3 millions de clauses.
+ThoraricSurgery.csv,152,1800
+wine.csv,89,1800

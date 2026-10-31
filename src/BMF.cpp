@@ -9,13 +9,24 @@
 #include <set>
 #include <fstream>
 #include <iomanip>
+#include <chrono>
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <csignal>
+#include <poll.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 
-void BMF::dump_wcnf(const std::string& output_path) {
+bool BMF::dump_wcnf(const std::string& output_path, long long max_clauses) {
     std::ofstream out(output_path);
     if (!out.is_open()) {
         std::cerr << "dump_wcnf: cannot open " << output_path << std::endl;
-        return;
+        return false;
     }
 
     // A[i,l] : id = 1 + i*k + l
@@ -52,6 +63,12 @@ void BMF::dump_wcnf(const std::string& output_path) {
         << "c Vars: A[i,l]=1+i*k+l, B[l,j]=1+m*k+l*n+j, aux p_{i,l,j}\n"
         << "p wcnf " << total_vars << " " << (n_hard + n_soft) << " " << top << "\n";
 
+    if (max_clauses > 0 && n_hard + n_soft > max_clauses) {
+        std::cout << "[wcnf] " << output_path << " nclauses=" << (n_hard + n_soft)
+                  << " > " << max_clauses << " : en-tete seul" << std::endl;
+        return false;
+    }
+
     // Passe 2 : ecrire les clauses.
     int next_aux = 1 + m * k + k * n;
     for (int i = 0; i < m; i++) {
@@ -87,6 +104,35 @@ void BMF::dump_wcnf(const std::string& output_path) {
               << " nclauses=" << (n_hard + n_soft)
               << " (hard=" << n_hard << " soft=" << n_soft << ")"
               << " top=" << top << std::endl;
+    return true;
+}
+
+
+void BMF::dump_assignment(const Matrix& A_val, const Matrix& B_val, const std::string& output_path) {
+    std::ofstream out(output_path);
+    if (!out.is_open()) {
+        std::cerr << "dump_assignment: cannot open " << output_path << std::endl;
+        return;
+    }
+
+    // Meme numerotation et meme ordre des auxiliaires que dump_wcnf.
+    int var = 0;
+    auto put = [&](bool value) {
+        ++var;
+        out << (value ? var : -var) << ((var % 20 == 0) ? "\n" : " ");
+    };
+    out << "c m=" << m << " n=" << n << " k=" << k << "\n";
+    for (int i = 0; i < m; i++)
+        for (int l = 0; l < k; l++) put(A_val(i, l) == 1);
+    for (int l = 0; l < k; l++)
+        for (int j = 0; j < n; j++) put(B_val(l, j) == 1);
+    for (int i = 0; i < m; i++)
+        for (int j = 0; j < n; j++) {
+            if (M(i, j) != 1) continue;
+            for (int l = 0; l < k; l++) put(A_val(i, l) == 1 && B_val(l, j) == 1);
+        }
+    out << "0\n";
+    std::cout << "[init] " << output_path << " nvars=" << var << std::endl;
 }
 
 
@@ -171,13 +217,8 @@ int BMF::lns_step_partial(
                         soft_count++;
                     }
                 } else {
-                    if (is_error) {
-                        partial_solver.add_soft_clause(big_or, 1);
-                        soft_count++;
-                    } else {
-                        partial_solver.add_clause(big_or);
-                        hard_count++;
-                    }
+                    partial_solver.add_soft_clause(big_or, 1);
+                    soft_count++;
                 }
 
             } else {
@@ -195,13 +236,8 @@ int BMF::lns_step_partial(
                     }
 
                     if (!clause.empty()) {
-                        if (is_error) {
-                            partial_solver.add_soft_clause(clause, 1);
-                            soft_count++;
-                        } else {
-                            partial_solver.add_clause(clause);
-                            hard_count++;
-                        }
+                        partial_solver.add_clause(clause);
+                        hard_count++;
                     }
                 }
             }
@@ -255,4 +291,93 @@ int BMF::lns_step_partial(
     }
 
     return fixed_cost + static_cast<int>(partial_cost);
+}
+
+
+int BMF::lns_step_partial_limited(
+    Matrix& A_current, Matrix& B_current,
+    const std::vector<int>& rows_to_free,
+    const std::vector<int>& cols_to_free,
+    double limit_ms, const std::atomic<bool>* stop
+) {
+    std::vector<int> rows, cols;
+    for (int r : rows_to_free) if (r >= 0 && r < m) rows.push_back(r);
+    for (int c : cols_to_free) if (c >= 0 && c < n) cols.push_back(c);
+
+    int fd[2];
+    if (pipe(fd) != 0) return -1;
+    // Sinon le fils reecrirait ce qui reste dans les tampons de sortie.
+    std::cout.flush();
+    std::fflush(nullptr);
+    pid_t parent = getpid();
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(fd[0]);
+        close(fd[1]);
+        return -1;
+    }
+
+    if (pid == 0) {
+#ifdef __linux__
+        // Un fils orphelin continuerait a resoudre : il meurt avec le parent.
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+        if (getppid() != parent) _exit(1);
+#else
+        (void)parent;
+#endif
+        // Fils : cout, puis lignes de A et colonnes de B liberees.
+        close(fd[0]);
+        std::vector<int32_t> out{lns_step_partial(A_current, B_current, rows, cols)};
+        if (out[0] >= 0) {
+            for (int r : rows) for (int l = 0; l < k; l++) out.push_back(A_current(r, l));
+            for (int l = 0; l < k; l++) for (int c : cols) out.push_back(B_current(l, c));
+        }
+        std::cout.flush();
+        const char* p = reinterpret_cast<const char*>(out.data());
+        size_t left = out.size() * sizeof(int32_t);
+        while (left > 0) {
+            ssize_t w = write(fd[1], p, left);
+            if (w < 0 && errno == EINTR) continue;
+            if (w <= 0) break;
+            p += w;
+            left -= static_cast<size_t>(w);
+        }
+        _exit(0);
+    }
+
+    close(fd[1]);
+    std::vector<char> buf;
+    char chunk[1 << 16];
+    auto t0 = std::chrono::steady_clock::now();
+    bool done = false;
+    while (!done) {
+        double left = limit_ms - std::chrono::duration<double, std::milli>(
+                                     std::chrono::steady_clock::now() - t0).count();
+        if (left <= 0 || (stop && stop->load())) break;
+        // Reveil au moins chaque seconde pour voir *stop.
+        pollfd pfd{fd[0], POLLIN, 0};
+        int r = poll(&pfd, 1, static_cast<int>(std::min(left, 1000.0)) + 1);
+        if (r < 0 && errno != EINTR) break;
+        if (r <= 0) continue;
+        ssize_t got = read(fd[0], chunk, sizeof chunk);
+        if (got > 0) buf.insert(buf.end(), chunk, chunk + got);
+        else if (got == 0) done = true;
+        else if (errno != EINTR) break;
+    }
+    close(fd[0]);
+    if (!done) kill(pid, SIGKILL);
+    waitpid(pid, nullptr, 0);
+    if (!done) return -2;
+
+    std::vector<int32_t> v(buf.size() / sizeof(int32_t));
+    if (!v.empty()) std::memcpy(v.data(), buf.data(), v.size() * sizeof(int32_t));
+    if (v.empty() || (v[0] >= 0 && v.size() != 1 + (rows.size() + cols.size()) * static_cast<size_t>(k))) {
+        std::cerr << "  [PARTIAL] processus fils sans resultat complet" << std::endl;
+        return -1;
+    }
+    if (v[0] < 0) return v[0];
+    size_t p = 1;
+    for (int r : rows) for (int l = 0; l < k; l++) A_current(r, l) = v[p++];
+    for (int l = 0; l < k; l++) for (int c : cols) B_current(l, c) = v[p++];
+    return v[0];
 }

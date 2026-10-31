@@ -1,0 +1,35 @@
+filename,k,timeout_per_option_seconds
+# Ablation sur les 31 matrices brutes (data/Real/) a k = floor(k_real / 2),
+# k_real = colonne k de datasets_real.csv. Timeout PAR configuration : 1800s.
+# Total par tache SLURM = 4 configs x NSEEDS x 1800s (+ greedy, quasi instantane).
+advertisement.csv,397,1800
+americas_small.csv,108,1800
+apj.csv,237,1800
+audio.csv,100,1800
+autism.csv,77,1800
+balance.csv,11,1800
+breast.csv,45,1800
+car.csv,12,1800
+chess_krvskp.csv,19,1800
+cmc.csv,35,1800
+customer.csv,141,1800
+dermatology.csv,94,1800
+dna.csv,248,1800
+firewall.csv,32,1800
+flare.csv,21,1800
+heart.csv,135,1800
+hepatits.csv,77,1800
+iris.csv,60,1800
+lymphography.csv,27,1800
+mushroom.csv,25,1800
+nursery.csv,15,1800
+paleo.csv,69,1800
+phishing.csv,13,1800
+soybean.csv,42,1800
+studentPerformance.csv,88,1800
+ThoraricSurgery.csv,152,1800
+tictactoe.csv,14,1800
+tumor.csv,22,1800
+votes.csv,8,1800
+wine.csv,89,1800
+zoo.csv,12,1800

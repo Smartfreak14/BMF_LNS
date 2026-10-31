@@ -1,12 +1,4 @@
 #!/bin/bash
-# bench_maxsat.sh : execute plusieurs solveurs MaxSAT anytime sur un WCNF.
-#
-# Usage :
-#   bench_maxsat.sh <input.wcnf> <timeout_s> <output.csv>
-#
-# Chemins des solveurs (env vars, defauts pointent sur third_party/) :
-#   EVALMAXSAT_BIN, NUWLS_BIN, SATLIKE_BIN, LOANDRA_BIN
-# Un solveur absent est simplement skippe.
 
 set -euo pipefail
 
@@ -17,10 +9,7 @@ OUT_CSV="${3:?Usage: bench_maxsat.sh <input.wcnf> <timeout_s> <output.csv>}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CPP_ROOT="$(cd "$HERE/.." && pwd)"
 
-EVALMAXSAT_BIN="${EVALMAXSAT_BIN:-$CPP_ROOT/third_party/EvalMaxSAT/build/main/EvalMaxSAT_bin}"
 NUWLS_BIN="${NUWLS_BIN:-$CPP_ROOT/third_party/NuWLS/nuwls_c}"
-SATLIKE_BIN="${SATLIKE_BIN:-$CPP_ROOT/third_party/SATLike-c/satlike_c}"
-LOANDRA_BIN="${LOANDRA_BIN:-$CPP_ROOT/third_party/loandra/loandra}"
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -46,7 +35,7 @@ run_solver() {
     local args=("$@")
     if [ ! -x "$bin" ]; then
         echo "[skip] $name : $bin introuvable"
-        echo "$name,N/A,0,$TIMEOUT,0,not_found" >> "$OUT_CSV"
+        echo "$name,N/A,0,$TIMEOUT,0,not_found,," >> "$OUT_CSV"
         return
     fi
 
@@ -68,6 +57,9 @@ run_solver() {
 
     # Meilleur cout : derniere ligne "o <N>" (aussi "o <N> <time>" pour NuWLS).
     best=$(grep -E "^o[[:space:]]+[0-9]+" "$out" | tail -1 | awk '{print $2}' || true)
+    local first_cost first_time
+    first_cost=$(grep -E "^o[[:space:]]+[0-9]+" "$out" | head -1 | awk '{print $2}' || true)
+    first_time=$(grep -E "^o[[:space:]]+[0-9]+" "$out" | head -1 | awk '{print $3}' || true)
     if grep -qE "^s OPTIMUM FOUND|^c best solution found" "$out"; then solved=1
     else solved=0
     fi
@@ -79,22 +71,32 @@ run_solver() {
         137) note="oom_or_killed" ;;
         143|124) note="timeout" ;;
     esac
-    [ -z "$best" ] && best="N/A"
+    # Aucune ligne "o" : lance mais sans premiere solution (comptee a part).
+    [ -z "$best" ] && { best="N/A"; note="no_first_solution;$note"; }
 
-    echo "$name,$best,$elapsed,$TIMEOUT,$solved,$note" >> "$OUT_CSV"
+    # Solutions successives ("o <cout> <temps_s>") au format des .trace de BoolMaxLS.
+    if [[ "$OUT_CSV" == *_bench.csv ]]; then
+        { echo "time_ms err"
+          grep -E "^o[[:space:]]+[0-9]+" "$out" | awk 'NF >= 3 {printf "%.3f %s\n", $3 * 1000, $2}' || true
+        } > "${OUT_CSV%_bench.csv}_${name}.trace"
+    fi
+
+    echo "$name,$best,$elapsed,$TIMEOUT,$solved,$note,$first_cost,$first_time" >> "$OUT_CSV"
     echo "[$name] best=$best time=${elapsed}ms solved=$solved $note"
 }
 
-echo "solver,best_cost,time_ms,timeout_s,solved,note" > "$OUT_CSV"
+echo "solver,best_cost,time_ms,timeout_s,solved,note,first_cost,first_time_s" > "$OUT_CSV"
 echo ">>> bench_maxsat : $INPUT (timeout ${TIMEOUT}s)"
 echo ""
 
 SEED="${SEED:-42}"
 
-run_solver "evalmaxsat" "$EVALMAXSAT_BIN" --TCT "$TIMEOUT" @
-run_solver "nuwls"      "$NUWLS_BIN"      @ "$SEED"
-run_solver "satlike"    "$SATLIKE_BIN"    @ "$SEED"
-run_solver "loandra"    "$LOANDRA_BIN"    @
+# NUWLS_INIT_FILE : affectation de depart (nuwls -init) ; vide = demarrage d'origine.
+if [ -n "${NUWLS_INIT_FILE:-}" ]; then
+    run_solver "nuwls" "$NUWLS_BIN" @ "$SEED" -init "$NUWLS_INIT_FILE"
+else
+    run_solver "nuwls" "$NUWLS_BIN" @ "$SEED"
+fi
 
 echo ""
 echo ">>> Resultats : $OUT_CSV"

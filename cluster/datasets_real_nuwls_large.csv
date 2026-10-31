@@ -1,0 +1,8 @@
+filename,k,timeout_per_option_seconds
+# Brutes a k (k de datasets_real.csv) dont l'encodage depasse MAX_CLAUSES (2e7) mais pas
+# MAX_CLAUSES_LARGE (6e7) : 20,7 a 50,6 millions de clauses.
+firewall.csv,64,1800
+heart.csv,270,1800
+mushroom.csv,51,1800
+ThoraricSurgery.csv,304,1800
+wine.csv,178,1800

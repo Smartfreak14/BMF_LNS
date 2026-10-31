@@ -1,139 +1,222 @@
-# BMF_LNS
+# BoolMaxLS
 
-Boolean Matrix Factorization par recherche locale pondérée (WLS style
-NuWLS) + Large Neighborhood Search MaxSAT.
+Anytime from-below Boolean Matrix Factorization via MaxSAT-style local search.
 
-## Problème
+Given a binary matrix `M` and a target rank `k`, BoolMaxLS finds two binary factors `A`
+(`m × k`) and `B` (`k × n`) whose Boolean product `A x B` covers no 0-entry of `M`
+(from-below constraint) and covers as many 1-entries as possible. It combines a
+greedy from-below initialisation, a weighted local search on the factor matrices,
+a structural double-flip move, and a large-neighborhood search that solves
+restricted subproblems exactly with a complete Partial MaxSAT solver.
 
-Étant donné `M ∈ {0, 1, -1}^(m×n)` (avec `-1` = valeur manquante ignorée)
-et `k`, trouver `A ∈ {0,1}^(m×k)`, `B ∈ {0,1}^(k×n)` minimisant :
 
-```
-err(A, B) = #{ (i, j) : M[i,j] ≠ -1 ∧ M[i,j] ≠ (A X B)[i,j] }
-```
-
-où `X` est le produit matriciel booléen.
-
-## Méthode : opt4-wls = GI + (WLS + LNS partial)*
-
-| Brique          | Implémentation                        |
-|-----------------|---------------------------------------|
-| **GI**          | `BMFLocalSearch::initialize_greedy`   |
-| **WLS**         | `BMFLocalSearch::solve_weighted`      |
-| **LNS partial** | `BMF::lns_step_partial`               |
-
-WLS spécialisée BMF Partial MaxSAT avec les structures du PDF du
-superviseur (`nbcover`, `rows_A`, `cols_B`, `pos_score`) :
-
-- flip incrémental `O(|cols_B[l]| · k)`
-- **BMS K=10** pour choisir un flip améliorant
-- **double flip** à la sortie de minimum local (conditions du PDF)
-- **Weighting-PMS** (hard prioritaire) + **force flip**
-- `smooth_prob` auto : `0.01` si `n_vars < 10⁴` sinon `0.0003`
-
-LNS partial : sous-problème MaxSAT sur cellules impactées par `(rows, cols)`
-avec voisinage 70% top-k / 30% aléatoire, taille adaptative `nh <- 10`,
-`+10` sur stagnation, plafond `min(100, min(m, n))`.
-
-Détails algorithmiques : [`docs/ALGORITHME_BMF_LNS.md`](docs/ALGORITHME_BMF_LNS.md).
 
 ## Build
 
-```bash
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j4
-```
-
-Sur Narval : `bash cluster/setup_env.sh` charge les modules (`StdEnv/2023`,
-`gcc/12.3`, `cmake/3.27.7`, `python/3.11`), compile EvalMaxSAT2022 puis
-`rbac_main`.
-
-## Usage
+Requirements: a C++17 compiler, CMake ≥ 3.16, zlib, pthread, Python 3 (for the
+verification script and the ASSO baseline). Gurobi and MATLAB are only needed
+to run the Kolomvakis baseline.
 
 ```bash
-./rbac_main <file.csv> <k> [timeout_seconds] [--csv-out <path>]
-./rbac_main --help
+./build.sh
 ```
 
-- `timeout=0` : pas de limite, Ctrl+C interrompt proprement.
-- `--csv-out <path>` : écrit une ligne CSV avec les métriques (schéma en §Sortie).
+This produces `build/BoolMaxLS`.
 
-Exemples :
+`third_party/NuWLS` (NuWLS-c) and `third_party/BooleanMF` (Kolomvakis et al.) are git
+submodules. After `git submodule update --init`, apply the local changes with
+`git -C third_party/NuWLS apply ../patches/NuWLS.patch` (option `-init FILE`, an initial
+assignment for the first try, used by the `nuwls_greedy_*` campaigns; no `-static`) and
+`git -C third_party/BooleanMF apply ../patches/BooleanMF.patch` (adds `utils/vec.m`).
+
+## Run
+
+```
+./build/BoolMaxLS <matrix.csv> <k> [timeout_seconds] [OPTIONS]
+```
+
+Input format: comma-separated matrix, `0` / `1` for known cells and an empty
+field for undefined (don't-care) entries.
+
+Common options:
+
+```
+--ablation MODE     full | greedy | no-weighting | wls-no-double-no-lns |
+                    no-lns | no-double-flip
+--seed N            RNG seed (default 42)
+--csv-out PATH      write a one-line CSV summary (unified schema)
+--trace-out PATH    write "time_ms err" per improvement
+--regime LABEL      raw | simpluni | simplexi | synth (stored in the CSV)
+--init-factors A B  start from these factors (CSV, at most k, e.g. GreEss) instead of the greedy
+--lns-time-limit S  solve each exact LNS subproblem in a child process, abandoned after S seconds
+                    and at the latest at the end of the budget (inf: only at the end of the
+                    budget); without this option, an LNS call has no time limit
+--dump-wcnf FILE    dump the Partial MaxSAT encoding of the full problem
+--help              show all options
+```
+
+Example:
 
 ```bash
-./rbac_main ../data/Real/SimplUni/zoo.csv 25 10
-./rbac_main ../data/Real/SimplUni/mushroom.csv 51 60 --csv-out /tmp/mushroom.csv
+./build/BoolMaxLS data/Real/zoo.csv 25 60 --ablation full --seed 1 \
+    --csv-out zoo_full_s1.csv --trace-out zoo_full_s1.trace
 ```
 
-## Sortie
+Output columns of the CSV: `method, dataset, k, init_errors, phase1_errors,
+phase1_last_improve_ms, phase2_errors, phase2_last_improve_ms, final_errors,
+iterations, time_ms, wls_total_flips, wls_total_time_ms, wls_flips_per_sec,
+verif_errors, m, n, regime, tool, seed, time_to_zero_ms, trace_file`.
 
-Tableau stdout à la fin de l'exécution + CSV optionnel avec 15 colonnes :
+`verif_errors` is filled by an independent Python script (`src/verif.py`) that
+recomputes `A x B` and reports both the number of covered 0-entries (hard
+violations) and the number of uncovered 1-entries. A warning is printed to
+`stderr` whenever the returned factorisation is not from-below.
 
-```
-method, dataset, k, init_errors,
-phase1_errors, phase1_last_improve_ms,
-phase2_errors, phase2_last_improve_ms,
-final_errors, iterations, time_ms,
-wls_total_flips, wls_total_time_ms, wls_flips_per_sec,
-verif_errors
-```
 
-- `phase1` = après greedy + 1re WLS ; `phase2` = fin de la boucle WLS+LNS.
-- `wls_*` : débit cumulé de la WLS (utile pour diagnostiquer un goulot).
-- `verif_errors` : `-1` non vérifié, `0` `verif.py` d'accord, `>0` désaccord.
+## Baselines
 
-## Baseline MaxSAT anytime
+Four external methods can be compared:
 
-Compare opt4-wls contre des solveurs MaxSAT anytime généraux sur la même
-formule (EvalMaxSAT, NuWLS, SATLike-c, loandra).
+- **BoolMaxLS** (this work) — `./build/BoolMaxLS ...`.
+- **NuWLS-c** — anytime Partial MaxSAT solver run on the WCNF produced by
+  `./build/BoolMaxLS --dump-wcnf`.
+- **Kolomvakis et al. 2025** — MATLAB + Gurobi, driver in
+  `scripts/baselines/run_kolomvakis.m`.
+- **ASSO** 
+  `scripts/baselines/asso.py`
+  `--tau-list` for the confidence-threshold
+  sweep documented in the paper.
+- **GreConD, GreEss, MDLGreConD** (deterministic from-below heuristics) —
+  `./build/FromBelowBaselines <grecond|greess|mdlgrecond> <matrix.csv> <k>
+  [--cuts k,k2] [--missing free|zero|one] [--time-limit s] [--out-dir dir]`.
+  Factors are added one at a time, so one run up to `k` also gives the first
+  `k2` factors. Unknown cells: `free` (default) lets factors cover them without
+  having to, as for the other methods; `zero` / `one` replace them before the
+  run. Errors are counted on known cells only.
+  `cluster/make_frombelow_table.py` builds the LaTeX results table from the
+  `<algo>_raw_k`, `_raw_khalf`, `_simpluni` and `_simplexi` campaigns, the
+  BoolMaxLS and NuWLS re-runs, and `cluster/table_main_article.tex` for the
+  methods that were not re-run. `--root` points to the directory holding the
+  `results_*` folders; `--diff` prints in red the re-run values that differ
+  from `table_main_article.tex` and lists them on stderr. The
+  `boolmaxls_simpl*_oldk` campaigns add the ranks of that table missing from
+  `datasets.csv` / `datasets_simplexi.csv`, and the left block keeps the
+  smallest rank reached; the `nuwls_greedy_*_large` campaigns run NuWLS on the
+  encodings between `MAX_CLAUSES` and `MAX_CLAUSES_LARGE` (`launch_rerun.sh`).
+  On the raw matrices, a `<campaign>_final` run (final configuration, several
+  seeds) replaces `<campaign>` and its `_large` complement, and the error of
+  BoolMaxLS is read from its trace at the budget (`--budget`), so an LNS call
+  that ends after the budget does not count. `cluster/make_synthetic_table.py` builds the table of
+  the synthetic instances (time to an exact factorization at the planted rank, from
+  `boolmaxls_synthetic`, `nuwls_greedy_synthetic` and `<algo>_synthetic`);
+  `cluster/make_greess_start_table.py` compares BoolMaxLS started from the greedy solution and from
+  the GreEss factors (`boolmaxls_greess_raw_k*`) with GreEss itself; `cluster/make_ablation_table.py`
+  builds the ablation table (GI, no-w, +wt, +DF, full) on the raw matrices from `ablation_raw_k` and
+  `ablation_raw_khalf`; `cluster/make_nodf_table.py` compares the full method with the full method
+  without the double flip (`boolmaxls_nodf_raw_k`, `_raw_khalf`, same settings as the `_final`
+  campaigns) and prints on how many matrices removing it worsens or improves the median error. The
+  runs of `results_<campaign>_redo` (e.g. `boolmaxls_raw_k_final_redo`, re-run with
+  `--lns-time-limit inf` because SLURM killed the original runs inside an LNS call) replace the runs
+  of the same name in `results_<campaign>`. `cluster/status_rerun.sh` reports the progress
+  of every campaign and builds `cluster/table_results.tex` once all are done.
+  Each submitted array is recorded in `cluster/submitted_jobs.log`, so a
+  campaign without logs is reported as not submitted, or as submitted with its
+  `sacct` state.
+  `cluster/make_dataset_table.py` prints the dataset table (m, n, density,
+  known 1s, unknown cells, k, min(m,n)); `cluster/plot_traces.py
+  raw_k|raw_khalf|ablation|ablation_k` draws the error-time curves from the `.trace` files
+  (matplotlib; `module load scipy-stack` on Narval).
+
+## Cluster campaigns (SLURM)
+
+The `cluster/` directory contains the launch scripts used for the SLURM
+campaigns on Compute Canada. All scripts share the helper `_submit_common.sh`
+and read a dataset list from `datasets*.csv`.
+
+### Deployment
+
+`cluster/deploy_narval.sh`, run on the local machine, creates the project
+directory on the cluster and copies the sources, the `third_party` code, the
+scripts, the dataset lists and the data in one `rsync`, never local binaries
+or object files, together with a SHA-256 manifest (`SOURCES.sha256`). On the
+cluster login node, `cluster/setup_env.sh` builds the project that contains it
+(an exported `PROJECT_ROOT` is ignored), stops if the manifest is missing or
+does not match, builds EvalMaxSAT2022 if the library is missing or not an ELF
+object, rebuilds BoolMaxLS, FromBelowBaselines and NuWLS-c from scratch, and
+runs short sanity tests. `cluster/launch_rerun.sh` sets every variable its jobs
+read (project root, data directory, NuWLS binary, unknown-cell treatments), so
+variables exported in the shell cannot change the campaigns, and it skips a
+campaign whose job is still queued. The final-configuration campaigns
+(`*_final`, `boolmaxls_synthetic`, `nuwls_greedy_synthetic`,
+`boolmaxls_greess_raw_k*`) run one SLURM task per (matrix, seed), with
+`NSEEDS_FINAL` seeds (default 3); `boolmaxls_greess_*` starts BoolMaxLS from
+the GreEss factors computed in the same task, whose time is taken from the budget.
+`boolmaxls_nodf_raw_k*` (`--ablation no-double-flip`) and `boolmaxls_raw_k*_final_redo`
+(matrices of `datasets_real*_redo.csv`) work the same way, with `--lns-time-limit inf`: the
+error at 30 minutes is the same as without a limit, but every run ends and is verified. The
+job passes the options in `BOOLMAXLS_ARGS`, which `launch_rerun.sh` sets for every campaign.
+
+### Available launchers
+
+| Method     | Submit script                                            | Backing job script                |
+|------------|----------------------------------------------------------|-----------------------------------|
+| BoolMaxLS  | `submit_boolmaxls_real.sh`, `submit_boolmaxls_table2.sh` | `job_boolmaxls_dataset.sh`        |
+| ASSO       | `submit_asso_real.sh`, `submit_asso_sweep.sh`, `submit_asso_table2.sh` | `job_asso_dataset.sh` |
+| Kolomvakis | `submit_kolomvakis.sh`, `submit_kolomvakis_batch.sh`     | `job_kolomvakis_dataset.sh`       |
+| NuWLS-c    | `submit_maxsat_{real,simpluni,simplexi,synthetic,table2}.sh` | `job_maxsat_array.sh`         |
+| Ablation   | `submit_ablation.sh`                                     | `job_ablation_array.sh`           |
+| GreConD, GreEss, MDLGreConD | `launch_rerun.sh` (`<algo>_raw_k`, `_raw_khalf`, `_simpluni`, `_simplexi`, `_synthetic`) | `job_frombelow_dataset.sh` |
+
+`launch_table2_all.sh` is a master script that runs all four methods on the
+Table 2 grid (`--method M --budget T --rank R`).
+
+### Typical invocation
 
 ```bash
-# 1. Compiler les solveurs baseline (une fois)
-bash scripts/install_baseline_solvers.sh
+# One-off (from cluster/):
+NSEEDS=11 TIMEOUT_OVERRIDE=1800 bash submit_boolmaxls_real.sh
 
-# 2. Dumper la formule Partial MaxSAT d'un dataset
-./rbac_main --dump-wcnf data/Real/SimplUni/mushroom.csv 51 /tmp/mushroom.wcnf
-
-# 3. Lancer les solveurs baseline avec timeout 60s
-bash scripts/bench_maxsat.sh /tmp/mushroom.wcnf 60 /tmp/mushroom_bench.csv
-
-# 4. Campagne sur toute une liste
-bash scripts/bench_maxsat_batch.sh cluster/datasets.csv Real/SimplUni 60 /tmp/bench_out
+# Common overrides:
+#   NSEEDS            : seeds per (method, dataset)  (default varies)
+#   TIMEOUT_OVERRIDE  : per-run wall-clock in seconds
+#   TIME_LIMIT        : SLURM --time (HH:MM:SS)
+#   MEM_PER_TASK      : SLURM --mem
+#   RUN_NAME          : suffix for results_<RUN_NAME>/ and log filenames
 ```
 
-Encodage : `M=1` → clause soft `∃l : A[i,l] ∧ B[l,j]` via Tseitin sur
-`p_{i,l,j}` ; `M=0` → hards `¬A[i,l] ∨ ¬B[l,j]` pour chaque `l`. Cellules
-`M=-1` ignorées. Chaque solveur peut être remplacé via `EVALMAXSAT_BIN`,
-`NUWLS_BIN`, `SATLIKE_BIN`, `LOANDRA_BIN`.
+### Aggregation
 
-## Arborescence
+Each SLURM run produces one CSV per (dataset, seed) in `cluster/results_<RUN_NAME>/`.
+The aggregators consolidate them into a single wide-format CSV per campaign:
 
-```
-src/
-  main.cpp                  CLI + pipeline opt4-wls
-  BMF.hpp / BMF.cpp         LNS partial (MaxSAT sur voisinage)
-  BMFLocalSearch.hpp/.cpp   GI + WLS (structures PDF, flip incremental,
-                            double flip, Weighting-PMS)
-  SATSolver.hpp / .cpp      Interface EvalMaxSAT2022 (IPAMIR)
-  Matrix.hpp                Matrice binaire
-  CSVMatrixLoader.hpp       Chargement CSV
-  verif.py                  Verification Python (A * B vs M)
-scripts/
-  bench_maxsat.sh           Lance les baselines MaxSAT sur un WCNF
-  bench_maxsat_batch.sh     Meme chose sur une liste de datasets
-  install_baseline_solvers.sh Compile NuWLS + SATLike-c + loandra
-data/
-  Real/                     Datasets reels (SimplUni, SimplExi, ...)
-  Synthetic/                Datasets synthetiques
-third_party/
-  EvalMaxSAT2022/           Solveur MaxSAT (IPAMIR)
+```bash
+python cluster/aggregate_table2.py    results_<RUN_NAME>/ -o table2_<name>.csv
+python cluster/aggregate_ablation.py  results_<RUN_NAME>/ -o ablation_<name>.csv
+python cluster/aggregate_kolomvakis.py results_<RUN_NAME>/ -o kol_<name>.csv
+python cluster/aggregate_maxsat.py    results_<RUN_NAME>/ -o maxsat_<name>.csv
 ```
 
-## Dépendances
+## Data
 
-- C++17 (Clang ou GCC ≥ 12)
-- CMake ≥ 3.16
-- EvalMaxSAT2022 (compilé dans `third_party/`)
-- zlib, pthread
-- Python 3 + NumPy (pour `verif.py`)
+Benchmarks live under `data/`:
+
+- `data/Real/` — 31 UCI-style matrices (raw).
+- `data/Real/SimplUni/` — same matrices preprocessed by the universal
+  delegation-relegation simplification of Avellaneda 2024.
+- `data/Real/SimplExi/` — the aggressive existential variant.
+- `data/Synthetic/` — synthetic matrices `A* x B*` generated per the protocol
+  of Avellaneda 2024.
+
+## Verification
+
+For every returned factorisation, `src/verif.py` recomputes `A x B` and prints:
+
+```
+Covered 0-entries (hard violations) = 0
+Uncovered 1-entries (soft violations, err_M) = 0
+From-below = yes
+Reconstruction error = 0
+```
+
+The C++ driver invokes it after every run (not only on exact success) and
+prints a warning to `stderr` if `Covered 0-entries > 0`.

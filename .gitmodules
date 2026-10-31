@@ -1,0 +1,6 @@
+[submodule "third_party/NuWLS"]
+	path = third_party/NuWLS
+	url = https://github.com/filyouzicha/NuWLS.git
+[submodule "third_party/BooleanMF"]
+	path = third_party/BooleanMF
+	url = https://gitlab.com/ngillis/BooleanMF.git

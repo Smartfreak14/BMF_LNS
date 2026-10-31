@@ -1,0 +1,11 @@
+diff --git a/utils/vec.m b/utils/vec.m
+new file mode 100644
+index 0000000..75ca30f
+--- /dev/null
++++ b/utils/vec.m
+@@ -0,0 +1,5 @@
++function v = vec(A)
++% VEC  Vectorization : aplatit une matrice en vecteur colonne.
++% Equivalent a A(:), fourni pour compatibilite avec CVX/Optimization Toolbox.
++v = A(:);
++end

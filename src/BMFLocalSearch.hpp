@@ -7,7 +7,6 @@
 #include <atomic>
 #include <cmath>
 
-// utilisee a la place du unordered_set 
 class SparseIntSet {
     std::vector<int> items;
     std::vector<int> pos;
@@ -73,10 +72,10 @@ public:
     inline int& nbcover_ref(int i, int j)       { return nbcover_flat[i * n + j]; }
     inline int  nbcover(int i, int j) const     { return nbcover_flat[i * n + j]; }
 
-    std::vector<SparseIntSet> rows_A; // rows_A[l] = {i : A[i,l]=1}
-    std::vector<SparseIntSet> cols_B; // cols_B[l] = {j : B[l,j]=1}
-    std::vector<SparseIntSet> cols_A; // cols_A[i] = {l : A[i,l]=1}
-    std::vector<SparseIntSet> rows_B; // rows_B[j] = {l : B[l,j]=1}
+    std::vector<SparseIntSet> rows_A; 
+    std::vector<SparseIntSet> cols_B; 
+    std::vector<SparseIntSet> cols_A; 
+    std::vector<SparseIntSet> rows_B; 
 
     std::vector<SparseIntSet> zero_cover_in_row;
     std::vector<SparseIntSet> zero_cover_in_col;
@@ -95,8 +94,8 @@ public:
     inline double& weight_ref(int i, int j)     { return weight_flat[i * n + j]; }
     inline double  weight(int i, int j) const   { return weight_flat[i * n + j]; }
 
-    SparseIntSet unsat_hard_cells; // M=0 et nbcover>=1
-    SparseIntSet unsat_soft_cells; // M=1 et nbcover=0
+    SparseIntSet unsat_hard_cells; 
+    SparseIntSet unsat_soft_cells; 
 
     std::mt19937 rng;
 
@@ -118,7 +117,9 @@ public:
                                      double timeout_ms = 0,
                                      double smooth_prob_override = -1.0,
                                      double h_inc = 1.0,
-                                     double s_inc = 1.0);
+                                     double s_inc = 1.0,
+                                     bool enable_double_flip = true,
+                                     bool enable_weighting = true);
 
     // M=1 (soft): erreur ssi nbcover=0. M=0 (hard): erreur ssi nbcover>=1. M=-1: ignore.
     static inline int err_val(int m_ij, int nb) {
@@ -126,8 +127,7 @@ public:
         return m_ij ? (nb == 0 ? 1 : 0) : (nb >= 1 ? 1 : 0);
     }
 
-    // Contribution au score (positif = ameliorant) d'une cellule pour un flip
-    // qui changerait nb par sign in {+1, -1}.
+    
     static inline double score_contrib(int m_ij, int nb, int sign, double w) {
         if (m_ij == -1) return 0.0;
         int de = err_val(m_ij, nb + sign) - err_val(m_ij, nb);

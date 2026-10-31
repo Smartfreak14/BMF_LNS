@@ -48,28 +48,26 @@ void BMFLocalSearch::initialize_greedy() {
         }
 
         for (int j = 0; j < n; j++) {
-            if (B(l, j) == 0) {
-                int gain = 0;
-                for (int i = 0; i < m; i++) {
-                    if (A(i, l) == 1) {
-                        if (uncovered[i][j]) gain++;
-                        else if (M(i, j) == 0) gain--;
-                    }
-                }
-                if (gain > 0) {
-                    B(l, j) = 1;
-                    for (int i = 0; i < m; i++)
-                        if (A(i, l) == 1 && uncovered[i][j])
-                            uncovered[i][j] = false;
-                }
+            if (B(l, j) == 1) continue;
+            bool admissible = true;
+            int gain = 0;
+            for (int i = 0; i < m; i++) {
+                if (A(i, l) != 1) continue;
+                if (M(i, j) == 0) { admissible = false; break; }
+                if (uncovered[i][j]) gain++;
+            }
+            if (admissible && gain > 0) {
+                B(l, j) = 1;
+                for (int i = 0; i < m; i++)
+                    if (A(i, l) == 1 && uncovered[i][j])
+                        uncovered[i][j] = false;
             }
         }
     }
 }
 
 
-// Rebuild toutes les structures depuis (A, B, M). Appeler apres modification
-// externe de A/B.
+
 void BMFLocalSearch::compute_all_counts() {
     nbcover_flat.assign(m * n, 0);
 
@@ -201,8 +199,7 @@ void BMFLocalSearch::flip_A(int i, int l) {
 
     
     {
-        // cols_B[l]/zero_cover_in_row[i] ne sont pas modifies dans cette boucle:
-        // reference (pas de copie).
+        
         const std::vector<int>& snap = zero_cover_in_row[i].as_vector();
         for (int j : snap) {
             if (B(l, j) == 1) continue;
@@ -473,10 +470,8 @@ bool BMFLocalSearch::pick_good_flip(char& type, int& a, int& b) {
 }
 
 
-// Cherche (i, l, j) : M=1, nbcover=0, A[i,l]=0, B[l,j]=0, score_A~0, score_B~0.
 bool BMFLocalSearch::try_double_flip() {
     if (unsat_soft_cells.empty()) return false;
-    const double EPS = 1e-9;
 
     std::vector<int> cells = unsat_soft_cells.as_vector();
     std::shuffle(cells.begin(), cells.end(), rng);
@@ -499,8 +494,30 @@ bool BMFLocalSearch::try_double_flip() {
             int l = ls[t];
             if (A(i, l) == 1) continue;
             if (B(l, j) == 1) continue;
-            if (std::abs(score_A_flat[i * k + l]) > EPS) continue;
-            if (std::abs(score_B_flat[l * n + j]) > EPS) continue;
+
+            bool ok_iii = true;
+            const std::vector<int>& cols_l = cols_B[l].as_vector();
+            for (int jp : cols_l) {
+                int m_ij = M(i, jp);
+                if (m_ij == -1) continue;
+                if (m_ij == 1 && nbcover(i, jp) >= 1) continue;
+                ok_iii = false;
+                break;
+            }
+            if (!ok_iii) continue;
+
+            bool ok_iv = true;
+            const std::vector<int>& rows_l = rows_A[l].as_vector();
+            for (int ip : rows_l) {
+                if (ip == i) continue;
+                int m_ij = M(ip, j);
+                if (m_ij == -1) continue;
+                if (m_ij == 1 && nbcover(ip, j) >= 1) continue;
+                ok_iv = false;
+                break;
+            }
+            if (!ok_iv) continue;
+
             flip_A(i, l);
             flip_B(l, j);
             return true;
@@ -580,7 +597,9 @@ LocalSearchResult BMFLocalSearch::solve_weighted(int max_iterations,
                                                  double timeout_ms,
                                                  double smooth_prob_override,
                                                  double h_inc,
-                                                 double s_inc) {
+                                                 double s_inc,
+                                                 bool enable_double_flip,
+                                                 bool enable_weighting) {
     LocalSearchResult result;
     result.method_name = "WEIGHTED";
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -618,6 +637,8 @@ LocalSearchResult BMFLocalSearch::solve_weighted(int max_iterations,
     }
 
     int best_errors = errors;
+    int best_hard = (int)unsat_hard_cells.size();
+    int best_soft = (int)unsat_soft_cells.size();
     Matrix A_best = A, B_best = B;
     int iter = 0;
     long long total_flips = 0;
@@ -630,25 +651,39 @@ LocalSearchResult BMFLocalSearch::solve_weighted(int max_iterations,
             if (type == 'A') flip_A(a, b);
             else             flip_B(a, b);
             total_flips++;
+        } else if (enable_double_flip && try_double_flip()) {
+            // Sortie de min local via double flip (mode weighted uniquement)
+            total_double++;
+            total_flips += 2;
+        } else if (enable_weighting) {
+            // Mode weighted : mise a jour des poids + force flip
+            bool did_smooth = false;
+            update_weights(sp, h_inc, s_inc, did_smooth);
+            if (did_smooth) total_smooth++; else total_penalty++;
+            if (interrupted()) break;
+            force_flip_from_unsat();
+            total_flips++;
         } else {
-            if (try_double_flip()) {
-                total_double++;
-                total_flips += 2;
-            } else {
-                bool did_smooth = false;
-                update_weights(sp, h_inc, s_inc, did_smooth);
-                if (did_smooth) total_smooth++; else total_penalty++;
-                if (interrupted()) break;
-                force_flip_from_unsat();
-                total_flips++;
+            // Mode no-weighting (hill climbing pur) : au premier minimum
+            // local, on s'arrete. Pas de ponderation, pas de force flip.
+            if (verbose) {
+                std::cout << "  [WEIGHTED] Local min atteint (no-weighting)"
+                          << " iter=" << iter << " err=" << errors << std::endl;
             }
+            break;
         }
 
-        errors = (int)(unsat_hard_cells.size() + unsat_soft_cells.size());
+        int cur_hard = (int)unsat_hard_cells.size();
+        int cur_soft = (int)unsat_soft_cells.size();
+        errors = cur_hard + cur_soft;
         result.error_history.push_back(errors);
 
-        if (errors < best_errors) {
-            best_errors = errors;
+        bool strictly_better = (cur_hard < best_hard) ||
+                               (cur_hard == best_hard && cur_soft < best_soft);
+        if (strictly_better) {
+            best_hard = cur_hard;
+            best_soft = cur_soft;
+            best_errors = cur_hard + cur_soft;
             A_best = A; B_best = B;
             result.last_improvement_ms = elapsed();
         }
